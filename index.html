@@ -159,14 +159,7 @@
   .config-row input[type=range] { flex: 1; accent-color: #5a9060; }
   .config-val { font-size: 13px; color: #a0d890; min-width: 24px; text-align: right; }
 
-  /* ── SETUP NOTICE ── */
-  #setup-notice {
-    background: #0e1a0a; border: 0.5px solid #3a6020;
-    border-radius: 10px; padding: 16px; width: 100%;
-    font-size: 12px; color: #6a9060; line-height: 1.8;
-  }
-  #setup-notice strong { color: #a0d080; }
-  #setup-notice code { background: #162010; padding: 1px 5px; border-radius: 4px; color: #c0e080; font-size: 11px; }
+
 
   .tag { display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;background:#1a3a20;color:#7ab870;border:0.5px solid #2a5030; }
   .err { font-size:12px;color:#d08080;text-align:center;min-height:16px; }
@@ -174,35 +167,12 @@
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════
-     SCREEN 1 — FIREBASE CONFIG (first-time setup)
-     ══════════════════════════════════════════════ -->
-<div id="config-screen" class="screen active">
-  <h1>Shadows in the Forest</h1>
-  <div id="setup-notice">
-    <strong>One-time Firebase setup</strong><br>
-    1. Go to <strong>console.firebase.google.com</strong> → New project<br>
-    2. Build → Realtime Database → Create → Start in <strong>test mode</strong><br>
-    3. Project Settings (gear icon) → Your apps → Web → Register app<br>
-    4. Copy the <code>firebaseConfig</code> values below<br><br>
-    <strong>Rules tab</strong> in Realtime Database → paste:<br>
-    <code>{ "rules": { ".read": true, ".write": true } }</code>
-  </div>
-  <div class="card" style="display:flex;flex-direction:column;gap:10px;">
-    <div><label>API Key</label><input id="cfg-apiKey" type="text" placeholder="AIzaSy..."></div>
-    <div><label>Auth Domain</label><input id="cfg-authDomain" type="text" placeholder="your-app.firebaseapp.com"></div>
-    <div><label>Database URL</label><input id="cfg-dbUrl" type="text" placeholder="https://your-app-default-rtdb.firebaseio.com"></div>
-    <div><label>Project ID</label><input id="cfg-projectId" type="text" placeholder="your-app"></div>
-    <div><label>App ID</label><input id="cfg-appId" type="text" placeholder="1:123456:web:abc..."></div>
-    <div class="err" id="cfg-err"></div>
-    <button class="primary" onclick="initFirebase()">Connect & Continue</button>
-  </div>
-</div>
+
 
 <!-- ══════════════════════════════
      SCREEN 2 — HOME
      ══════════════════════════════ -->
-<div id="home-screen" class="screen">
+<div id="home-screen" class="screen active">
   <h1>Shadows in the Forest</h1>
   <p>Hide from the lantern.<br>Reach the Great Tree.</p>
   <div class="card" style="display:flex;flex-direction:column;gap:10px;">
@@ -344,34 +314,21 @@ let diceRolling = false;
 const PLAYER_COLORS = ['#6a50c0','#407a7a','#7a5030','#7a3050','#304a7a'];
 const PLAYER_PILL   = ['#b0a0e8','#90c8c8','#c8a070','#e090b0','#90b0e0'];
 
-// ── Firebase init ─────────────────────────────────────────
-window.initFirebase = function() {
-  const cfg = {
-    apiKey:            v('cfg-apiKey'),
-    authDomain:        v('cfg-authDomain'),
-    databaseURL:       v('cfg-dbUrl'),
-    projectId:         v('cfg-projectId'),
-    appId:             v('cfg-appId'),
-  };
-  if (!cfg.apiKey || !cfg.databaseURL) { err('cfg-err','Fill in all fields.'); return; }
-  try {
-    const app = initializeApp(cfg);
-    db = getDatabase(app);
-    localStorage.setItem('sitf_firebase', JSON.stringify(cfg));
-    showScreen('home-screen');
-  } catch(e) { err('cfg-err', e.message); }
+// ── Firebase init (hardcoded) ─────────────────────────────
+const FIREBASE_CONFIG = {
+  apiKey:      "AIzaSyCSkdcF6XmW6-ROU_LhQLTfdta1HUbru4c",
+  authDomain:  "shadows-in-the-forest.firebaseapp.com",
+  databaseURL: "https://shadows-in-the-forest-default-rtdb.firebaseio.com",
+  projectId:   "shadows-in-the-forest",
+  appId:       "1:277386752922:web:881b4d7a5b14a151f18023",
 };
 
-// auto-load saved config
 window.addEventListener('load', () => {
-  const saved = localStorage.getItem('sitf_firebase');
-  if (saved) {
-    try {
-      const cfg = JSON.parse(saved);
-      const app = initializeApp(cfg);
-      db = getDatabase(app);
-      showScreen('home-screen');
-    } catch(e) { /* show config screen */ }
+  try {
+    const app = initializeApp(FIREBASE_CONFIG);
+    db = getDatabase(app);
+  } catch(e) {
+    alert('Failed to connect to Firebase: ' + e.message);
   }
 });
 

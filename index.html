@@ -301,7 +301,7 @@
      ══════════════════════════════════════════════════════ -->
 <script type="module">
 import { initializeApp }         from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, update, onValue, off, push, remove }
+import { getDatabase, ref, set, get, update, onValue, off, push, remove, onDisconnect }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // ── globals ──────────────────────────────────────────────
@@ -510,6 +510,9 @@ window.createGame = async function() {
   await set(ref(db, `games/${code}`), gameState);
   gameRef = ref(db, `games/${code}`);
 
+  // auto-remove player if they close the tab
+  onDisconnect(ref(db, `games/${code}/players/${myId}`)).remove();
+
   showScreen('lobby-screen');
   document.getElementById('lobby-code').textContent = code;
   startLobbyListener(code);
@@ -526,7 +529,8 @@ window.joinGame = async function() {
   if(!snap.exists()) { err('join-err','Game not found.'); return; }
 
   const state = snap.val();
-  if(state.status !== 'lobby') { err('join-err','Game already started.'); return; }
+  if(state.status === 'playing') { err('join-err','This game has already started — ask the host to start a new one.'); return; }
+  if(state.status === 'ended')   { err('join-err','This game has already finished.'); return; }
 
   const existingPlayers = Object.keys(state.players||{});
   const shadowCount = existingPlayers.filter(id => state.players[id].role !== 'lantern').length;
@@ -545,6 +549,10 @@ window.joinGame = async function() {
   });
 
   gameRef = ref(db, `games/${code}`);
+
+  // auto-remove player if they close the tab
+  onDisconnect(ref(db, `games/${code}/players/${myId}`)).remove();
+
   showScreen('lobby-screen');
   document.getElementById('lobby-code').textContent = code;
   startLobbyListener(code);
@@ -1062,11 +1070,73 @@ window.closeModal = function() {
 
 // ── LEAVE ─────────────────────────────────────────────────
 window.leaveGame = async function() {
+  // stop local rendering and listeners immediately
   if(rafId) cancelAnimationFrame(rafId);
   if(gameRef) off(gameRef);
-  if(myId && gameCode) {
+
+  if(!myId || !gameCode) { showScreen('home-screen'); return; }
+
+  try {
+    const snap = await get(ref(db, `games/${gameCode}`));
+    if(!snap.exists()) { showScreen('home-screen'); return; }
+
+    const state = snap.val();
+    const players = state.players || {};
+
+    // remove this player
+    const remainingPlayers = Object.keys(players).filter(id => id !== myId);
+
+    // if nobody left, delete the entire game
+    if(remainingPlayers.length === 0) {
+      await remove(ref(db, `games/${gameCode}`));
+      showScreen('home-screen');
+      return;
+    }
+
+    // remove the player record
     await remove(ref(db, `games/${gameCode}/players/${myId}`));
+
+    // if the game is active and it was this player's turn, advance to next
+    if(state.status === 'playing' && state.turn === myId) {
+      const order = (state.turnOrder || []).filter(id => id !== myId);
+      if(order.length === 0) {
+        await remove(ref(db, `games/${gameCode}`));
+        showScreen('home-screen');
+        return;
+      }
+      let idx = state.turnIndex % order.length;
+      // skip caught/safe shadows
+      let tries = 0;
+      while(tries < order.length) {
+        const pid = order[idx];
+        const isShadow = players[pid]?.role !== 'lantern';
+        if(!isShadow) break;
+        if(!state.shadowCaught?.[pid] && !state.shadowSafe?.[pid]) break;
+        idx = (idx + 1) % order.length;
+        tries++;
+      }
+      await update(ref(db, `games/${gameCode}`), {
+        turnOrder: order,
+        turn: order[idx],
+        turnIndex: idx,
+        movesLeft: 0,
+        hasRolled: false,
+        lastRoll: 0,
+      });
+    }
+
+    // if the game is active and the lantern left, end the game
+    if(state.status === 'playing' && myRole === 'lantern') {
+      await update(ref(db, `games/${gameCode}`), {
+        status: 'ended',
+        winner: 'shadows',
+      });
+    }
+
+  } catch(e) {
+    console.error('Error leaving game:', e);
   }
+
   showScreen('home-screen');
 };
 

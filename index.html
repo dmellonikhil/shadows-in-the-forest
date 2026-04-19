@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shadows in the Forest</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #060d07;
+    color: #c0d8b0;
+    font-family: system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── SCREENS ── */
+  .screen { display: none; width: 100%; max-width: 480px; padding: 24px 16px; flex-direction: column; align-items: center; gap: 16px; }
+  .screen.active { display: flex; }
+
+  h1 { font-size: 26px; font-weight: 500; color: #a8d898; letter-spacing: 0.04em; text-align: center; }
+  h2 { font-size: 18px; font-weight: 500; color: #8aba80; text-align: center; }
+  p  { font-size: 14px; color: #6a9070; line-height: 1.6; text-align: center; }
+
+  .card {
+    background: #0b1a0d;
+    border: 0.5px solid #1e3a20;
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+  }
+
+  input[type="text"] {
+    width: 100%; padding: 10px 14px; font-size: 15px;
+    background: #0e1e10; border: 0.5px solid #2a4a30;
+    border-radius: 8px; color: #c0d8b0; outline: none;
+    letter-spacing: 0.1em;
+  }
+  input[type="text"]:focus { border-color: #5a9060; }
+  input::placeholder { color: #3a5a40; letter-spacing: 0; }
+
+  button {
+    font-size: 13px; padding: 10px 20px; cursor: pointer;
+    border-radius: 8px; border: 0.5px solid #2a4a30;
+    background: #0e1e10; color: #a0c8a0;
+    transition: background 0.15s; width: 100%;
+  }
+  button:hover { background: #162818; }
+  button.primary { background: #1a3a20; border-color: #4a8060; color: #b0d8a8; }
+  button.primary:hover { background: #224828; }
+  button.danger  { border-color: #6a2a2a; color: #d09090; }
+  button.danger:hover { background: #1e0e0e; }
+  button:disabled { opacity: 0.35; cursor: default; }
+
+  .btn-row { display: flex; gap: 8px; width: 100%; }
+  .btn-row button { flex: 1; }
+
+  label { font-size: 12px; color: #5a8060; margin-bottom: 4px; display: block; }
+
+  .code-display {
+    font-size: 32px; font-weight: 500; letter-spacing: 0.25em;
+    color: #ffe082; text-align: center; padding: 12px;
+    background: #0a1508; border-radius: 8px; border: 0.5px solid #3a5a20;
+    cursor: pointer; user-select: all;
+  }
+  .code-display:hover { border-color: #5a8a30; }
+
+  /* ── LOBBY ── */
+  #lobby-list { width: 100%; display: flex; flex-direction: column; gap: 6px; min-height: 60px; }
+  .player-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 8px;
+    background: #0e1e10; border: 0.5px solid #1e3020;
+    font-size: 13px;
+  }
+  .player-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .player-name { flex: 1; color: #b0d0a0; }
+  .player-role { font-size: 11px; color: #4a7a50; }
+  .player-row.me { border-color: #3a6040; }
+
+  /* ── GAME UI ── */
+  #game-screen {
+    max-width: 100%;
+    padding: 0;
+    gap: 0;
+  }
+
+  #hud {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: #050c06;
+    border-bottom: 0.5px solid #1a3020;
+    flex-wrap: wrap; gap: 5px; width: 100%;
+  }
+  .hud-pill {
+    font-size: 11px; padding: 3px 9px; border-radius: 8px;
+    border: 0.5px solid #2a4a30; background: #0e1e10; color: #7ab880;
+  }
+  .hud-pill.active { border-color: #5a9060; background: #122018; color: #c0e8b0; font-weight: 500; }
+
+  #turn-banner {
+    text-align: center; font-size: 13px; padding: 6px; font-weight: 500;
+    border-bottom: 0.5px solid #1a3020; width: 100%;
+  }
+
+  #canvas-wrap { width: 100%; overflow-x: auto; }
+  canvas { display: block; }
+
+  #bottom {
+    background: #050c06; border-top: 0.5px solid #1a3020;
+    padding: 10px 14px; display: flex; gap: 10px;
+    align-items: center; justify-content: space-between;
+    flex-wrap: wrap; width: 100%;
+  }
+
+  #dpad { display: grid; grid-template-columns: repeat(3,36px); grid-template-rows: repeat(3,36px); gap: 3px; }
+  #dpad button { width:36px;height:36px;padding:0;font-size:15px;background:#122018;color:#a0c8a0;border:0.5px solid #2a4a30;border-radius:6px; }
+  #dpad button:disabled { opacity:0.25;cursor:default; }
+
+  #center-panel { display:flex;flex-direction:column;align-items:center;gap:8px;flex:1; }
+  #dice-face {
+    width:58px;height:58px;border-radius:10px;
+    background:#0e1e10;border:1.5px solid #2a4a30;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;position:relative;
+  }
+  #dice-face:hover:not(.disabled) { border-color:#5a9060; }
+  #dice-face.rolling { animation:shake 0.45s ease; }
+  #dice-face.disabled { opacity:0.4;cursor:default;pointer-events:none; }
+  @keyframes shake {
+    0%{transform:rotate(0)scale(1)}15%{transform:rotate(-12deg)scale(1.1)}
+    35%{transform:rotate(10deg)scale(1.08)}55%{transform:rotate(-8deg)scale(1.05)}
+    75%{transform:rotate(5deg)scale(1.02)}100%{transform:rotate(0)scale(1)}
+  }
+  #dice-label { font-size:11px;color:#4a7a50;text-align:center; }
+  #status-msg { font-size:11px;color:#4a7a50;font-style:italic;text-align:center;padding:2px 4px; }
+
+  #action-btns { display:flex;flex-direction:column;gap:6px;min-width:100px; }
+  #action-btns button { font-size:12px;padding:7px 12px;width:auto; }
+
+  /* ── MODAL OVERLAY ── */
+  #modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(5,12,6,0.93);
+    z-index: 100; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 14px; padding: 24px;
+  }
+  #modal.open { display: flex; }
+  #modal h2 { font-size: 18px; color: #c0e8b0; }
+  #modal p  { font-size: 13px; color: #6a9870; max-width: 300px; }
+  #modal button { max-width: 260px; }
+
+  /* ── MAP GEN CONFIG ── */
+  .config-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .config-row label { margin: 0; flex: 1; }
+  .config-row input[type=range] { flex: 1; accent-color: #5a9060; }
+  .config-val { font-size: 13px; color: #a0d890; min-width: 24px; text-align: right; }
+
+  /* ── SETUP NOTICE ── */
+  #setup-notice {
+    background: #0e1a0a; border: 0.5px solid #3a6020;
+    border-radius: 10px; padding: 16px; width: 100%;
+    font-size: 12px; color: #6a9060; line-height: 1.8;
+  }
+  #setup-notice strong { color: #a0d080; }
+  #setup-notice code { background: #162010; padding: 1px 5px; border-radius: 4px; color: #c0e080; font-size: 11px; }
+
+  .tag { display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;background:#1a3a20;color:#7ab870;border:0.5px solid #2a5030; }
+  .err { font-size:12px;color:#d08080;text-align:center;min-height:16px; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     SCREEN 1 — FIREBASE CONFIG (first-time setup)
+     ══════════════════════════════════════════════ -->
+<div id="config-screen" class="screen active">
+  <h1>Shadows in the Forest</h1>
+  <div id="setup-notice">
+    <strong>One-time Firebase setup</strong><br>
+    1. Go to <strong>console.firebase.google.com</strong> → New project<br>
+    2. Build → Realtime Database → Create → Start in <strong>test mode</strong><br>
+    3. Project Settings (gear icon) → Your apps → Web → Register app<br>
+    4. Copy the <code>firebaseConfig</code> values below<br><br>
+    <strong>Rules tab</strong> in Realtime Database → paste:<br>
+    <code>{ "rules": { ".read": true, ".write": true } }</code>
+  </div>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+    <div><label>API Key</label><input id="cfg-apiKey" type="text" placeholder="AIzaSy..."></div>
+    <div><label>Auth Domain</label><input id="cfg-authDomain" type="text" placeholder="your-app.firebaseapp.com"></div>
+    <div><label>Database URL</label><input id="cfg-dbUrl" type="text" placeholder="https://your-app-default-rtdb.firebaseio.com"></div>
+    <div><label>Project ID</label><input id="cfg-projectId" type="text" placeholder="your-app"></div>
+    <div><label>App ID</label><input id="cfg-appId" type="text" placeholder="1:123456:web:abc..."></div>
+    <div class="err" id="cfg-err"></div>
+    <button class="primary" onclick="initFirebase()">Connect & Continue</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SCREEN 2 — HOME
+     ══════════════════════════════ -->
+<div id="home-screen" class="screen">
+  <h1>Shadows in the Forest</h1>
+  <p>Hide from the lantern.<br>Reach the Great Tree.</p>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+    <div><label>Your name</label><input id="player-name" type="text" placeholder="Enter your name" maxlength="16"></div>
+    <button class="primary" onclick="goCreate()">Create game</button>
+    <button onclick="goJoin()">Join with invite code</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SCREEN 3 — CREATE GAME
+     ══════════════════════════════ -->
+<div id="create-screen" class="screen">
+  <h2>Game settings</h2>
+  <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+    <div>
+      <label>Map size</label>
+      <div class="config-row">
+        <span style="font-size:12px;color:#5a8060;">Cols</span>
+        <input type="range" id="cfg-cols" min="8" max="14" value="10" step="1" oninput="document.getElementById('cfg-cols-val').textContent=this.value">
+        <span class="config-val" id="cfg-cols-val">10</span>
+      </div>
+      <div class="config-row">
+        <span style="font-size:12px;color:#5a8060;">Rows</span>
+        <input type="range" id="cfg-rows" min="8" max="16" value="10" step="1" oninput="document.getElementById('cfg-rows-val').textContent=this.value">
+        <span class="config-val" id="cfg-rows-val">10</span>
+      </div>
+    </div>
+    <div>
+      <label>Max shadowling players (1–5)</label>
+      <div class="config-row">
+        <input type="range" id="cfg-maxplayers" min="1" max="5" value="3" step="1" oninput="document.getElementById('cfg-mp-val').textContent=this.value">
+        <span class="config-val" id="cfg-mp-val">3</span>
+      </div>
+    </div>
+    <div>
+      <label>Path density</label>
+      <div class="config-row">
+        <span style="font-size:11px;color:#4a7060;">sparse</span>
+        <input type="range" id="cfg-density" min="1" max="5" value="3" step="1" oninput="document.getElementById('cfg-den-val').textContent=['','sparse','light','normal','dense','sprawling'][this.value]">
+        <span class="config-val" id="cfg-den-val" style="min-width:60px;">normal</span>
+      </div>
+    </div>
+    <div class="err" id="create-err"></div>
+    <div class="btn-row">
+      <button onclick="showScreen('home-screen')">← Back</button>
+      <button class="primary" onclick="createGame()">Create & get code</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SCREEN 4 — JOIN
+     ══════════════════════════════ -->
+<div id="join-screen" class="screen">
+  <h2>Join a game</h2>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+    <div><label>Invite code</label><input id="join-code" type="text" placeholder="XXXXXX" maxlength="6" style="font-size:22px;letter-spacing:0.2em;text-align:center;" oninput="this.value=this.value.toUpperCase()"></div>
+    <div class="err" id="join-err"></div>
+    <div class="btn-row">
+      <button onclick="showScreen('home-screen')">← Back</button>
+      <button class="primary" onclick="joinGame()">Join</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SCREEN 5 — LOBBY
+     ══════════════════════════════ -->
+<div id="lobby-screen" class="screen">
+  <h2>Lobby</h2>
+  <div class="card" style="display:flex;flex-direction:column;gap:12px;align-items:center;">
+    <p style="font-size:12px;color:#5a8060;">Share this code with friends</p>
+    <div class="code-display" id="lobby-code" onclick="copyCode()" title="Click to copy">------</div>
+    <p style="font-size:11px;color:#3a6040;">tap to copy</p>
+  </div>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+    <label>Players (<span id="lobby-count">0</span> / <span id="lobby-max">-</span>)</label>
+    <div id="lobby-list"></div>
+    <div class="err" id="lobby-err"></div>
+    <button class="primary" id="start-btn" onclick="startGame()" style="display:none;">Start game →</button>
+    <p id="lobby-waiting" style="font-size:12px;color:#3a6040;">Waiting for host to start…</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SCREEN 6 — GAME
+     ══════════════════════════════ -->
+<div id="game-screen" class="screen">
+  <div id="hud">
+    <div class="hud-pill" id="pill-lantern">🕯 Lantern</div>
+    <div id="shadow-pills"></div>
+    <div class="hud-pill" style="cursor:pointer;" onclick="leaveGame()">✕ Leave</div>
+  </div>
+  <div id="turn-banner" style="color:#ffe082;background:#0e1a08;">Loading…</div>
+  <div id="canvas-wrap"><canvas id="gc"></canvas></div>
+  <div id="bottom">
+    <div id="dpad">
+      <div></div><button id="bu" onclick="sendMove(0,-1)">↑</button><div></div>
+      <button id="bl" onclick="sendMove(-1,0)">←</button><div></div><button id="br" onclick="sendMove(1,0)">→</button>
+      <div></div><button id="bd" onclick="sendMove(0,1)">↓</button><div></div>
+    </div>
+    <div id="center-panel">
+      <div id="dice-face" onclick="rollDice()"><canvas id="dc" width="58" height="58"></canvas></div>
+      <div id="dice-label">tap to roll</div>
+      <div id="status-msg">–</div>
+    </div>
+    <div id="action-btns">
+      <button class="primary" id="end-btn" onclick="sendEndTurn()">End turn →</button>
+      <button onclick="leaveGame()">Leave</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     MODAL
+     ══════════════════════════════ -->
+<div id="modal">
+  <h2 id="modal-title"></h2>
+  <p id="modal-body"></p>
+  <button id="modal-btn" class="primary" onclick="closeModal()">OK</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCRIPTS
+     ══════════════════════════════════════════════════════ -->
+<script type="module">
+import { initializeApp }         from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, update, onValue, off, push, remove }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+// ── globals ──────────────────────────────────────────────
+let db, gameRef, myId, myRole; // 'lantern' | 'shadow_0' … 'shadow_4'
+let gameCode = '';
+let localState = null; // last snapshot of game state
+let animFrame = 0, windOffset = 0, rafId = null;
+let diceRolling = false;
+
+const PLAYER_COLORS = ['#6a50c0','#407a7a','#7a5030','#7a3050','#304a7a'];
+const PLAYER_PILL   = ['#b0a0e8','#90c8c8','#c8a070','#e090b0','#90b0e0'];
+
+// ── Firebase init ─────────────────────────────────────────
+window.initFirebase = function() {
+  const cfg = {
+    apiKey:            v('cfg-apiKey'),
+    authDomain:        v('cfg-authDomain'),
+    databaseURL:       v('cfg-dbUrl'),
+    projectId:         v('cfg-projectId'),
+    appId:             v('cfg-appId'),
+  };
+  if (!cfg.apiKey || !cfg.databaseURL) { err('cfg-err','Fill in all fields.'); return; }
+  try {
+    const app = initializeApp(cfg);
+    db = getDatabase(app);
+    localStorage.setItem('sitf_firebase', JSON.stringify(cfg));
+    showScreen('home-screen');
+  } catch(e) { err('cfg-err', e.message); }
+};
+
+// auto-load saved config
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem('sitf_firebase');
+  if (saved) {
+    try {
+      const cfg = JSON.parse(saved);
+      const app = initializeApp(cfg);
+      db = getDatabase(app);
+      showScreen('home-screen');
+    } catch(e) { /* show config screen */ }
+  }
+});
+
+// ── helpers ───────────────────────────────────────────────
+function v(id) { return document.getElementById(id)?.value.trim() ?? ''; }
+function err(id, msg) { const el = document.getElementById(id); if(el) el.textContent = msg; }
+function clearErr(id) { err(id, ''); }
+
+window.showScreen = function(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+};
+
+window.goCreate = function() {
+  if (!v('player-name')) { showModal('Name required', 'Enter your name first.'); return; }
+  showScreen('create-screen');
+};
+window.goJoin = function() {
+  if (!v('player-name')) { showModal('Name required', 'Enter your name first.'); return; }
+  showScreen('join-screen');
+};
+
+function genCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:6}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+}
+
+window.copyCode = function() {
+  navigator.clipboard?.writeText(gameCode);
+};
+
+// ── MAP GENERATION ────────────────────────────────────────
+// Tile types: 0=path, 1=grass, 2=tree, 3=great, 4=moss
+function generateMap(cols, rows, density) {
+  // density 1-5: controls how many path extensions we attempt
+  // Algorithm:
+  // 1. Start with a spine running down col 1
+  // 2. Randomly branch right using random-walk BFS
+  // 3. Add loops by connecting dangling path ends
+  // 4. Place Great Tree at bottom-right reachable cell
+
+  const map = Array.from({length:rows}, () => Array(cols).fill(2)); // all trees
+  const isValid = (x,y) => x>=0&&x<cols&&y>=0&&y<rows;
+  const pathSet = new Set();
+  const mark = (x,y) => { if(isValid(x,y)){ map[y][x]=0; pathSet.add(y*cols+x); }};
+
+  // main spine col 1
+  for(let y=0;y<rows;y++) mark(1,y);
+
+  // branch seeds along spine
+  const branchCount = 3 + density * 2;
+  const branchRows = [];
+  for(let i=0;i<branchCount;i++) branchRows.push(Math.floor(Math.random()*(rows-2))+1);
+  branchRows.sort((a,b)=>a-b);
+
+  // for each branch: random walk rightward with some vertical wiggle
+  branchRows.forEach(startY => {
+    let x=1, y=startY;
+    const walkLen = Math.floor(cols * 0.4 + Math.random() * cols * 0.5);
+    for(let step=0;step<walkLen;step++){
+      mark(x,y);
+      // bias: mostly right, sometimes up/down
+      const r = Math.random();
+      if(r < 0.6)       x++;
+      else if(r < 0.75) y = Math.max(0, y-1);
+      else if(r < 0.90) y = Math.min(rows-1, y+1);
+      else              x++;
+      if(x >= cols-1) { x = cols-2; break; }
+    }
+    mark(x,y);
+  });
+
+  // add horizontal connectors between branches to form loops
+  const loopCount = 2 + density;
+  for(let i=0;i<loopCount;i++){
+    const y1 = Math.floor(Math.random()*(rows-2))+1;
+    const y2 = Math.min(rows-1, y1 + 1 + Math.floor(Math.random()*3));
+    // find rightmost path cell in y1 and y2, connect them vertically
+    let maxX1=1,maxX2=1;
+    for(let x=0;x<cols;x++){ if(map[y1][x]===0) maxX1=x; if(map[y2][x]===0) maxX2=x; }
+    const connX = Math.min(maxX1, maxX2);
+    if(connX > 1){
+      for(let y=Math.min(y1,y2);y<=Math.max(y1,y2);y++) mark(connX,y);
+    }
+  }
+
+  // scatter some moss tiles on non-path cells
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    if(map[y][x]===2 && Math.random()<0.18) map[y][x]=4; // moss (still impassable for lantern)
+    if(map[y][x]===2 && Math.random()<0.12) map[y][x]=1; // grass clearing
+  }
+
+  // find rightmost-bottom reachable path cell for Great Tree
+  let gtx=1,gty=rows-1;
+  for(let y=rows-1;y>=0;y--){
+    for(let x=cols-1;x>=0;x--){
+      if(map[y][x]===0){ gtx=x; gty=y; break; }
+    }
+    if(gtx>1) break;
+  }
+  // make sure great tree is actually reachable from spine
+  // connect it via a path to nearest path cell
+  let nearX=1,nearY=gty;
+  for(let x=nearX;x<=gtx;x++) mark(x,gty);
+  map[gty][gtx]=3; // great tree
+
+  // BFS connectivity check: remove isolated path cells
+  const visited = new Set();
+  const queue = [{x:1,y:0}];
+  visited.add(0*cols+1);
+  while(queue.length){
+    const {x,y}=queue.shift();
+    [[0,-1],[0,1],[-1,0],[1,0]].forEach(([dx,dy])=>{
+      const nx=x+dx,ny=y+dy;
+      if(!isValid(nx,ny)) return;
+      const t=map[ny][nx];
+      if((t===0||t===3)&&!visited.has(ny*cols+nx)){
+        visited.add(ny*cols+nx); queue.push({x:nx,y:ny});
+      }
+    });
+  }
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    if(map[y][x]===0&&!visited.has(y*cols+x)) map[y][x]=2;
+  }
+
+  return { map, gtx, gty, cols, rows };
+}
+
+function getShadowlingStarts(mapData, count) {
+  // place shadowlings far from col 1 (lantern start)
+  const {map, cols, rows, gtx, gty} = mapData;
+  const candidates = [];
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    if((map[y][x]===0||map[y][x]===1||map[y][x]===4) && x > cols*0.5)
+      candidates.push({x,y});
+  }
+  candidates.sort((a,b)=>(b.x+b.y)-(a.x+a.y));
+  const starts = [];
+  for(let i=0;i<count&&i<candidates.length;i++) starts.push(candidates[i]);
+  return starts;
+}
+
+// ── CREATE GAME ───────────────────────────────────────────
+window.createGame = async function() {
+  clearErr('create-err');
+  const cols    = parseInt(document.getElementById('cfg-cols').value);
+  const rows    = parseInt(document.getElementById('cfg-rows').value);
+  const maxP    = parseInt(document.getElementById('cfg-maxplayers').value);
+  const density = parseInt(document.getElementById('cfg-density').value);
+  const name    = v('player-name');
+
+  const mapData = generateMap(cols, rows, density);
+  const code    = genCode();
+  gameCode      = code;
+  myId          = 'player_' + Date.now();
+  myRole        = 'lantern';
+
+  const starts  = getShadowlingStarts(mapData, 5);
+
+  const gameState = {
+    code,
+    status: 'lobby',   // lobby | playing | ended
+    maxShadows: maxP,
+    mapData: { map: mapData.map, cols, rows, gtx: mapData.gtx, gty: mapData.gty },
+    shadowStarts: starts,
+    players: {
+      [myId]: { name, role: 'lantern', color: '#ffe082', connected: true }
+    },
+    turn: null,   // set on game start
+    lanternPos: { x:1, y:0 },
+    shadowPositions: {},
+    shadowCaught: {},
+    shadowSafe: {},
+    movesLeft: 0,
+    hasRolled: false,
+    winner: null,
+  };
+
+  await set(ref(db, `games/${code}`), gameState);
+  gameRef = ref(db, `games/${code}`);
+
+  showScreen('lobby-screen');
+  document.getElementById('lobby-code').textContent = code;
+  startLobbyListener(code);
+};
+
+// ── JOIN GAME ─────────────────────────────────────────────
+window.joinGame = async function() {
+  clearErr('join-err');
+  const code = v('join-code').toUpperCase();
+  const name = v('player-name');
+  if(code.length !== 6) { err('join-err','Enter a 6-character code.'); return; }
+
+  const snap = await get(ref(db, `games/${code}`));
+  if(!snap.exists()) { err('join-err','Game not found.'); return; }
+
+  const state = snap.val();
+  if(state.status !== 'lobby') { err('join-err','Game already started.'); return; }
+
+  const existingPlayers = Object.keys(state.players||{});
+  const shadowCount = existingPlayers.filter(id => state.players[id].role !== 'lantern').length;
+  if(shadowCount >= state.maxShadows) { err('join-err','Game is full.'); return; }
+
+  gameCode = code;
+  myId = 'player_' + Date.now();
+  const shadowIdx = shadowCount; // 0-based index
+  myRole = `shadow_${shadowIdx}`;
+
+  await update(ref(db, `games/${code}/players/${myId}`), {
+    name,
+    role: myRole,
+    color: PLAYER_COLORS[shadowIdx],
+    connected: true,
+  });
+
+  gameRef = ref(db, `games/${code}`);
+  showScreen('lobby-screen');
+  document.getElementById('lobby-code').textContent = code;
+  startLobbyListener(code);
+};
+
+// ── LOBBY LISTENER ────────────────────────────────────────
+function startLobbyListener(code) {
+  const isHost = myRole === 'lantern';
+  document.getElementById('start-btn').style.display   = isHost ? 'block' : 'none';
+  document.getElementById('lobby-waiting').style.display = isHost ? 'none' : 'block';
+
+  onValue(ref(db, `games/${code}`), snap => {
+    if(!snap.exists()) return;
+    const state = snap.val();
+    renderLobby(state);
+    if(state.status === 'playing') {
+      off(ref(db, `games/${code}`));
+      enterGame(state);
+    }
+  });
+}
+
+function renderLobby(state) {
+  const players = state.players || {};
+  const list = document.getElementById('lobby-list');
+  list.innerHTML = '';
+  const total = Object.keys(players).length;
+  const maxTotal = 1 + state.maxShadows;
+  document.getElementById('lobby-count').textContent = total;
+  document.getElementById('lobby-max').textContent = maxTotal;
+
+  Object.entries(players).forEach(([id, p]) => {
+    const div = document.createElement('div');
+    div.className = 'player-row' + (id===myId?' me':'');
+    div.innerHTML = `
+      <div class="player-dot" style="background:${p.color||'#ffe082'};"></div>
+      <span class="player-name">${p.name}${id===myId?' (you)':''}</span>
+      <span class="player-role">${p.role==='lantern'?'🕯 Lantern':'▲ Shadowling'}</span>
+    `;
+    list.appendChild(div);
+  });
+}
+
+// ── START GAME (host only) ────────────────────────────────
+window.startGame = async function() {
+  const snap = await get(gameRef);
+  const state = snap.val();
+  const players = state.players || {};
+  if(Object.keys(players).length < 2) { err('lobby-err','Need at least 2 players.'); return; }
+
+  // assign shadowling start positions
+  const shadowPlayers = Object.entries(players).filter(([,p])=>p.role!=='lantern');
+  const shadowPositions = {};
+  const shadowCaught = {};
+  const shadowSafe = {};
+  shadowPlayers.forEach(([id,], idx) => {
+    const start = state.shadowStarts[idx] || {x: state.mapData.cols-2, y:idx};
+    shadowPositions[id] = start;
+    shadowCaught[id] = false;
+    shadowSafe[id] = false;
+  });
+
+  // turn order: lantern first, then shadows in join order
+  const turnOrder = [
+    Object.keys(players).find(id=>players[id].role==='lantern'),
+    ...shadowPlayers.map(([id])=>id)
+  ];
+
+  await update(gameRef, {
+    status: 'playing',
+    turn: turnOrder[0],
+    turnOrder,
+    turnIndex: 0,
+    shadowPositions,
+    shadowCaught,
+    shadowSafe,
+    movesLeft: 0,
+    hasRolled: false,
+  });
+};
+
+// ── ENTER GAME ────────────────────────────────────────────
+function enterGame(initialState) {
+  showScreen('game-screen');
+  localState = initialState;
+  buildHUD(initialState);
+  setupCanvas(initialState.mapData);
+  startGameListener();
+  startRenderLoop();
+}
+
+function buildHUD(state) {
+  const players = state.players || {};
+  const shadowPills = document.getElementById('shadow-pills');
+  shadowPills.innerHTML = '';
+  Object.entries(players).forEach(([id, p]) => {
+    if(p.role === 'lantern') return;
+    const div = document.createElement('div');
+    div.className = 'hud-pill';
+    div.id = 'pill_'+id;
+    div.style.borderColor = p.color;
+    div.style.color = p.color;
+    div.textContent = '▲ '+p.name;
+    shadowPills.appendChild(div);
+  });
+}
+
+// ── GAME LISTENER ─────────────────────────────────────────
+function startGameListener() {
+  onValue(gameRef, snap => {
+    if(!snap.exists()) return;
+    localState = snap.val();
+    updateGameUI(localState);
+    checkWinConditions(localState);
+  });
+}
+
+function updateGameUI(state) {
+  if(!state) return;
+
+  const players = state.players || {};
+  const myTurn  = state.turn === myId;
+  const isMyTurnLantern = myTurn && myRole === 'lantern';
+  const isMyTurnShadow  = myTurn && myRole !== 'lantern';
+
+  // hud pills
+  Object.keys(players).forEach(id => {
+    const el = id === Object.keys(players).find(i=>players[i].role==='lantern')
+      ? document.getElementById('pill-lantern')
+      : document.getElementById('pill_'+id);
+    if(el) el.className = 'hud-pill' + (state.turn===id?' active':'');
+  });
+
+  // banner
+  const activeName = players[state.turn]?.name || '?';
+  const banner = document.getElementById('turn-banner');
+  const activeColor = players[state.turn]?.role === 'lantern' ? '#ffe082'
+    : (players[state.turn]?.color || '#c0d8b0');
+  banner.style.color = activeColor;
+  banner.style.background = players[state.turn]?.role === 'lantern' ? '#0e1a08' : '#0a0e14';
+
+  if(!state.hasRolled) {
+    banner.textContent = `${activeName}'s turn — roll the dice!`;
+  } else {
+    banner.textContent = `${activeName}'s turn — ${state.movesLeft} move${state.movesLeft!==1?'s':''} left`;
+  }
+
+  // dice
+  const diceEl = document.getElementById('dice-face');
+  const diceLabel = document.getElementById('dice-label');
+  if(!myTurn || state.hasRolled || diceRolling) {
+    diceEl.classList.add('disabled');
+    diceLabel.textContent = state.hasRolled ? `Rolled ${state.lastRoll||'?'}!` : '–';
+  } else {
+    diceEl.classList.remove('disabled');
+    diceLabel.textContent = 'Tap to roll';
+    drawDiceFace(0);
+  }
+
+  // dpad & end btn
+  const moveable = myTurn && state.hasRolled && state.movesLeft > 0;
+  ['bu','bd','bl','br'].forEach(id => {
+    const b = document.getElementById(id);
+    if(b) b.disabled = !moveable;
+  });
+  const endBtn = document.getElementById('end-btn');
+  if(endBtn) endBtn.disabled = !myTurn || !state.hasRolled;
+
+  // status
+  let statusMsg = '';
+  if(!myTurn) statusMsg = `Waiting for ${activeName}…`;
+  else if(!state.hasRolled) statusMsg = 'Roll the dice to move!';
+  else if(state.movesLeft > 0) statusMsg = `${state.movesLeft} move${state.movesLeft!==1?'s':''} remaining`;
+  else statusMsg = 'Out of moves — end your turn';
+  document.getElementById('status-msg').textContent = statusMsg;
+}
+
+// ── DICE ──────────────────────────────────────────────────
+const DICE_DOTS = {
+  1:[[29,29]],
+  2:[[15,15],[43,43]],
+  3:[[15,15],[29,29],[43,43]],
+  4:[[15,15],[43,15],[15,43],[43,43]],
+  5:[[15,15],[43,15],[29,29],[15,43],[43,43]],
+  6:[[15,11],[43,11],[15,29],[43,29],[15,47],[43,47]],
+};
+
+function drawDiceFace(val) {
+  const dc = document.getElementById('dc');
+  if(!dc) return;
+  const dctx = dc.getContext('2d');
+  dctx.clearRect(0,0,58,58);
+  if(val===0){
+    dctx.fillStyle='#3a6040';
+    dctx.font='bold 22px sans-serif';
+    dctx.textAlign='center';
+    dctx.textBaseline='middle';
+    dctx.fillText('?',29,29);
+    return;
+  }
+  (DICE_DOTS[val]||[]).forEach(([dx,dy])=>{
+    dctx.fillStyle='#5ab870';
+    dctx.beginPath();
+    dctx.arc(dx,dy,5.5,0,Math.PI*2);
+    dctx.fill();
+  });
+}
+drawDiceFace(0);
+
+window.rollDice = async function() {
+  if(!localState) return;
+  if(localState.turn !== myId) return;
+  if(localState.hasRolled || diceRolling) return;
+
+  diceRolling = true;
+  const diceEl = document.getElementById('dice-face');
+  diceEl.classList.add('rolling');
+  document.getElementById('dice-label').textContent = 'Rolling…';
+
+  let ticks = 0;
+  const interval = setInterval(async () => {
+    ticks++;
+    drawDiceFace(Math.ceil(Math.random()*6));
+    if(ticks >= 14) {
+      clearInterval(interval);
+      diceEl.classList.remove('rolling');
+      diceEl.classList.add('disabled');
+      const roll = Math.ceil(Math.random()*6);
+      drawDiceFace(roll);
+      document.getElementById('dice-label').textContent = `Rolled ${roll}!`;
+      await update(gameRef, { hasRolled: true, movesLeft: roll, lastRoll: roll });
+      diceRolling = false;
+    }
+  }, 55);
+};
+
+// ── MOVEMENT ──────────────────────────────────────────────
+window.sendMove = async function(dx, dy) {
+  if(!localState || localState.turn !== myId) return;
+  if(!localState.hasRolled || localState.movesLeft <= 0) return;
+
+  const {mapData} = localState;
+
+  if(myRole === 'lantern') {
+    const pos = localState.lanternPos;
+    const nx = pos.x+dx, ny = pos.y+dy;
+    if(!inBounds(nx,ny,mapData)||mapData.map[ny][nx]!==0){
+      document.getElementById('status-msg').textContent='Lantern must stay on the path.';
+      return;
+    }
+    await update(gameRef, {
+      lanternPos: {x:nx,y:ny},
+      movesLeft: localState.movesLeft-1,
+    });
+    // check catches after move
+    await checkAndApplyCatches();
+
+  } else {
+    const pos = localState.shadowPositions?.[myId];
+    if(!pos) return;
+    if(localState.shadowCaught?.[myId] || localState.shadowSafe?.[myId]) return;
+    const nx = pos.x+dx, ny = pos.y+dy;
+    if(!inBounds(nx,ny,mapData)||mapData.map[ny][nx]===2){
+      document.getElementById('status-msg').textContent='Cannot move there.';
+      return;
+    }
+    const updates = {
+      [`shadowPositions/${myId}`]: {x:nx,y:ny},
+      movesLeft: localState.movesLeft-1,
+    };
+    if(mapData.map[ny][nx]===3) updates[`shadowSafe/${myId}`] = true;
+    await update(gameRef, updates);
+    await checkAndApplyCatches();
+  }
+};
+
+async function checkAndApplyCatches() {
+  const snap = await get(gameRef);
+  const state = snap.val();
+  const lit = getLitSet(state);
+  const updates = {};
+  let changed = false;
+  Object.entries(state.shadowPositions||{}).forEach(([id, pos]) => {
+    if(!state.shadowCaught[id]&&!state.shadowSafe[id]&&lit.has(pos.y*state.mapData.cols+pos.x)){
+      updates[`shadowCaught/${id}`] = true;
+      changed = true;
+    }
+  });
+  if(changed) await update(gameRef, updates);
+}
+
+window.sendEndTurn = async function() {
+  if(!localState || localState.turn !== myId) return;
+  await checkAndApplyCatches();
+
+  const snap = await get(gameRef);
+  const state = snap.val();
+
+  // check win
+  const shadows = Object.keys(state.players).filter(id=>state.players[id].role!=='lantern');
+  if(shadows.every(id=>state.shadowSafe[id])){
+    await update(gameRef,{status:'ended',winner:'shadows'}); return;
+  }
+  if(shadows.every(id=>state.shadowCaught[id]||state.shadowSafe[id])&&!shadows.some(id=>state.shadowSafe[id])){
+    await update(gameRef,{status:'ended',winner:'lantern'}); return;
+  }
+
+  // advance turn — skip caught/safe shadows
+  const order = state.turnOrder;
+  let idx = state.turnIndex;
+  let tries = 0;
+  do {
+    idx = (idx+1) % order.length;
+    tries++;
+    const pid = order[idx];
+    const isShadow = state.players[pid]?.role !== 'lantern';
+    if(!isShadow) break;
+    if(!state.shadowCaught[pid]&&!state.shadowSafe[pid]) break;
+  } while(tries < order.length);
+
+  await update(gameRef, {
+    turn: order[idx],
+    turnIndex: idx,
+    movesLeft: 0,
+    hasRolled: false,
+    lastRoll: 0,
+  });
+};
+
+function checkWinConditions(state) {
+  if(state.status !== 'ended') return;
+  if(state.winner === 'shadows') {
+    showModal('Shadowlings win!', 'All shadowlings reached the Great Tree!');
+  } else if(state.winner === 'lantern') {
+    showModal('Lantern wins!', 'All shadowlings were found in the light!');
+  }
+}
+
+// ── CANVAS & RENDERING ───────────────────────────────────
+const TW=68, TH=70;
+
+function setupCanvas(mapData) {
+  const cvs = document.getElementById('gc');
+  cvs.width  = mapData.cols * TW;
+  cvs.height = mapData.rows * TH;
+
+  cvs.addEventListener('click', e => {
+    if(!localState||localState.turn!==myId||!localState.hasRolled) return;
+    const rect = cvs.getBoundingClientRect();
+    const scaleX = cvs.width  / rect.width;
+    const scaleY = cvs.height / rect.height;
+    const mx = (e.clientX-rect.left)*scaleX;
+    const my = (e.clientY-rect.top)*scaleY;
+    const gx = Math.floor(mx/TW), gy = Math.floor(my/TH);
+    if(myRole==='lantern'){
+      const pos=localState.lanternPos;
+      const dx=gx-pos.x,dy=gy-pos.y;
+      if(Math.abs(dx)+Math.abs(dy)===1) sendMove(dx,dy);
+    } else {
+      const pos=localState.shadowPositions?.[myId];
+      if(!pos) return;
+      const dx=gx-pos.x,dy=gy-pos.y;
+      if(Math.abs(dx)+Math.abs(dy)===1) sendMove(dx,dy);
+    }
+  });
+}
+
+function startRenderLoop() {
+  if(rafId) cancelAnimationFrame(rafId);
+  function loop(){ windOffset++;animFrame++;renderGame();rafId=requestAnimationFrame(loop); }
+  rafId = requestAnimationFrame(loop);
+}
+
+function inBounds(x,y,md){ return x>=0&&x<md.cols&&y>=0&&y<md.rows; }
+
+function getLitSet(state) {
+  const lit=new Set();
+  const {x,y}=state.lanternPos;
+  const {cols,rows}=state.mapData;
+  for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+    const nx=x+dx,ny=y+dy;
+    if(nx>=0&&nx<cols&&ny>=0&&ny<rows) lit.add(ny*cols+nx);
+  }
+  return lit;
+}
+
+function tileColor(t){
+  if(t===0)return'#1e3020';if(t===1)return'#162818';
+  if(t===2)return'#0c1a0e';if(t===3)return'#0e2018';return'#131f14';
+}
+
+function drawTile(ctx,x,y,t,px,py){
+  ctx.fillStyle=tileColor(t);
+  ctx.beginPath();ctx.roundRect(px+1,py+1,TW-2,TH-2,4);ctx.fill();
+  if(t===0){
+    ctx.fillStyle='#2c4e2e';
+    for(let i=0;i<4;i++){const rx=px+4+i*15+(windOffset*0.22*(i+1))%10,ry=py+TH*.35+i*6;ctx.fillRect(rx,ry,13,2);}
+    ctx.fillStyle='#243e26';
+    for(let i=0;i<3;i++){const rx=px+9+i*17+(windOffset*0.15*(i+1))%8,ry=py+TH*.62+i*5;ctx.fillRect(rx,ry,10,2);}
+  }
+  if(t===1||t===4){
+    const tip=t===4?'#3a6040':'#2a5030';
+    for(let i=0;i<7;i++){
+      const bx=px+5+i*9+(x*7+y*3+i*5)%7,by=py+TH-8-(x*3+i*7)%16;
+      const sw=Math.sin(windOffset*.04+i*.8+x*.5)*3;
+      ctx.strokeStyle=tip;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(bx,by+8);ctx.quadraticCurveTo(bx+sw,by+3,bx+sw*1.4,by);ctx.stroke();
+    }
+  }
+  if(t===2){
+    const cx2=px+TW/2,cy2=py+TH/2-4,sw=Math.sin(windOffset*.03+x*.7+y*.9)*2;
+    ctx.fillStyle='#090f0a';ctx.fillRect(cx2-3,cy2+10,6,14);
+    ctx.fillStyle='#102a12';ctx.beginPath();ctx.ellipse(cx2+sw,cy2,17,19,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#163a1a';ctx.beginPath();ctx.ellipse(cx2+sw*.6,cy2-4,13,15,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#1e4a22';ctx.beginPath();ctx.ellipse(cx2+sw*.3,cy2-9,9,11,0,0,Math.PI*2);ctx.fill();
+  }
+  if(t===3){
+    const cx2=px+TW/2,cy2=py+TH/2-4,sw=Math.sin(windOffset*.025+x*.4)*1.5;
+    ctx.fillStyle='#081208';ctx.fillRect(cx2-4,cy2+14,8,17);
+    ctx.fillStyle='#0c2810';ctx.beginPath();ctx.ellipse(cx2+sw,cy2+5,24,26,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#103415';ctx.beginPath();ctx.ellipse(cx2+sw*.7,cy2-3,19,21,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#184a1c';ctx.beginPath();ctx.ellipse(cx2+sw*.3,cy2-12,14,16,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#266228';ctx.beginPath();ctx.ellipse(cx2+sw*.1,cy2-20,9,11,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(180,255,160,0.07)';ctx.beginPath();ctx.ellipse(cx2,cy2-6,20,22,0,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function renderGame() {
+  const state = localState;
+  if(!state||!state.mapData) return;
+  const cvs = document.getElementById('gc');
+  const ctx = cvs.getContext('2d');
+  const {map,cols,rows} = state.mapData;
+  const W=cols*TW, H=rows*TH;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#080f09';ctx.fillRect(0,0,W,H);
+
+  const lit = getLitSet(state);
+
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    const px=x*TW,py=y*TH,key=y*cols+x;
+    ctx.save();
+    if(!lit.has(key)) ctx.filter='brightness(0.3)';
+    drawTile(ctx,x,y,map[y][x],px,py);
+    ctx.restore();
+    if(lit.has(key)){
+      ctx.fillStyle='rgba(255,220,80,0.04)';
+      ctx.beginPath();ctx.roundRect(px+1,py+1,TW-2,TH-2,4);ctx.fill();
+    }
+  }
+
+  // lantern glow
+  const lpos = state.lanternPos;
+  const lcx=lpos.x*TW+TW/2,lcy=lpos.y*TH+TH/2;
+  const pulse=1+Math.sin(animFrame*.06)*.08;
+  const grd=ctx.createRadialGradient(lcx,lcy,4,lcx,lcy,95*pulse);
+  grd.addColorStop(0,'rgba(255,230,100,0.22)');grd.addColorStop(.45,'rgba(255,200,60,0.09)');grd.addColorStop(1,'rgba(255,180,30,0)');
+  ctx.fillStyle=grd;ctx.beginPath();ctx.arc(lcx,lcy,95*pulse,0,Math.PI*2);ctx.fill();
+
+  // shadowlings — only show if in light, or is me (when it's my turn), or caught/safe
+  const players = state.players||{};
+  Object.entries(state.shadowPositions||{}).forEach(([id,pos])=>{
+    const caught = state.shadowCaught?.[id];
+    const safe   = state.shadowSafe?.[id];
+    const inLight = lit.has(pos.y*cols+pos.x);
+    const isMe    = id === myId;
+    const myTurnAsThisShadow = isMe && state.turn===myId;
+
+    if(!inLight&&!caught&&!safe&&!myTurnAsThisShadow) return;
+
+    const color = players[id]?.color || '#6a50c0';
+    const cx2=pos.x*TW+TW/2,cy2=pos.y*TH+TH/2;
+    const bob=Math.sin(animFrame*.05+pos.x*1.1)*2;
+    const sw=Math.sin(animFrame*.04+pos.x*.9)*1.5;
+    ctx.globalAlpha=caught?.28:1;
+    if(safe){ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx2,cy2+bob,13,0,Math.PI*2);ctx.stroke();}
+    ctx.fillStyle=color;ctx.beginPath();ctx.ellipse(cx2+sw,cy2+bob,9,11,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,0.5)';ctx.beginPath();ctx.ellipse(cx2+sw,cy2+bob-5,5,6,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.75)';
+    ctx.beginPath();ctx.arc(cx2+sw-2,cy2+bob-6,1.5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(cx2+sw+2,cy2+bob-6,1.5,0,Math.PI*2);ctx.fill();
+    if(myTurnAsThisShadow&&!caught&&!safe){
+      ctx.strokeStyle=color;ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(cx2+sw,cy2+bob,14,0,Math.PI*2);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.globalAlpha=1;
+  });
+
+  // lantern dot
+  ctx.fillStyle=`rgba(255,230,120,${.92*pulse})`;ctx.beginPath();ctx.arc(lcx,lcy,9*pulse,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(255,210,60,0.75)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(lcx,lcy,12*pulse,0,Math.PI*2);ctx.stroke();
+  if(myRole==='lantern'&&state.turn===myId){
+    ctx.strokeStyle='rgba(255,230,80,0.35)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.arc(lcx,lcy,18,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // grid
+  ctx.strokeStyle='#182a1a';ctx.lineWidth=0.5;
+  for(let y=0;y<=rows;y++){ctx.beginPath();ctx.moveTo(0,y*TH);ctx.lineTo(W,y*TH);ctx.stroke();}
+  for(let x=0;x<=cols;x++){ctx.beginPath();ctx.moveTo(x*TW,0);ctx.lineTo(x*TW,H);ctx.stroke();}
+}
+
+// ── MODAL ─────────────────────────────────────────────────
+function showModal(title, body, btnText='OK', onOk=null) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent  = body;
+  document.getElementById('modal-btn').textContent   = btnText;
+  document.getElementById('modal-btn').onclick = () => { closeModal(); onOk&&onOk(); };
+  document.getElementById('modal').classList.add('open');
+}
+window.closeModal = function() {
+  document.getElementById('modal').classList.remove('open');
+};
+
+// ── LEAVE ─────────────────────────────────────────────────
+window.leaveGame = async function() {
+  if(rafId) cancelAnimationFrame(rafId);
+  if(gameRef) off(gameRef);
+  if(myId && gameCode) {
+    await remove(ref(db, `games/${gameCode}/players/${myId}`));
+  }
+  showScreen('home-screen');
+};
+
+drawDiceFace(0);
+</script>
+</body>
+</html>

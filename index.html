@@ -346,8 +346,12 @@ function startLobbyListener(code){
 
 function renderLobby(st){
   const players=st.players||{};
-  $('lobby-count').textContent=Object.keys(players).length;
-  $('lobby-max').textContent=1+st.maxShadows;
+  const total=Object.keys(players).length;
+  const maxTotal=1+st.maxShadows;
+  const shadowCount=total-1;
+  const isFull=shadowCount>=st.maxShadows;
+  $('lobby-count').textContent=total;
+  $('lobby-max').textContent=maxTotal;
   const list=$('lobby-list');list.innerHTML='';
   if(!players[myId])return;
   Object.entries(players).forEach(([id,p])=>{
@@ -357,6 +361,14 @@ function renderLobby(st){
     d.innerHTML=`<div class="player-dot" style="background:${p.color||'#ffe082'}"></div><span class="player-name">${p.name}${isMe?' (you)':''}</span><span class="player-role">${p.role==='warden'?'🕯 Warden':'▲ Shadowling'}</span>${canKick?`<button class="kick-btn" onclick="kickPlayer('${id}','${p.name}')">Remove</button>`:''}`;
     list.appendChild(d);
   });
+  // update start button state for host
+  if(myRole==='warden'){
+    const btn=$('start-btn');
+    if(btn){
+      btn.disabled=!isFull;
+      btn.textContent=isFull?'Start game →':'Waiting for players ('+shadowCount+'/'+st.maxShadows+')…';
+    }
+  }
 }
 
 window.kickPlayer=async(tid,tname)=>{
@@ -370,7 +382,7 @@ window.hostStartGame=async()=>{
   const snap=await get(dbRef);const st=snap.val();
   const players=st.players||{};
   const shadows=Object.keys(players).filter(id=>players[id].role!=='warden');
-  if(shadows.length<2){setErr('lobby-err','Need at least 2 shadowling players.');return;}
+  if(shadows.length<st.maxShadows){setErr('lobby-err','Lobby is not full yet.');return;}
   const sp={},sf={},sd={};
   shadows.forEach(id=>{sp[id]=null;sf[id]=false;sd[id]=false;});
   await update(dbRef,{status:'playing',phase:'setup',shadowPositions:sp,shadowFrozen:sf,shadowDone:sd,lastActionAt:Date.now()});

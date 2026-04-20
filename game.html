@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Shadows in the Forest</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  body{overflow:hidden;}
+  #game-wrap{display:flex;flex-direction:column;width:100%;max-width:680px;height:100vh;}
+
+  /* viewport */
+  #viewport-wrap{position:relative;flex:1;overflow:hidden;background:#000;min-height:0;}
+  #rc-canvas{display:block;width:100%;height:100%;image-rendering:pixelated;}
+  #minimap-canvas{
+    position:absolute;bottom:8px;right:8px;
+    border:.5px solid #2a4a30;border-radius:3px;
+    image-rendering:pixelated;opacity:.82;
+  }
+
+  /* phase overlay (shown during non-interactive moments) */
+  #phase-overlay{
+    display:none;position:absolute;inset:0;
+    background:rgba(4,10,5,.75);
+    align-items:center;justify-content:center;
+    flex-direction:column;gap:10px;
+  }
+  #phase-overlay.show{display:flex;}
+  #phase-overlay h3{font-size:18px;color:#a8d898;text-align:center;}
+  #phase-overlay p{font-size:13px;color:#6a9070;text-align:center;max-width:260px;}
+
+  /* shadow timer bar */
+  #timer-bar-wrap{
+    width:100%;height:4px;background:#0a160a;
+    display:none;
+  }
+  #timer-bar-wrap.show{display:block;}
+  #timer-bar{height:4px;background:#5a9860;transition:width .5s linear;}
+
+  /* bottom controls */
+  #bottom{
+    background:#050c06;border-top:.5px solid #1a3020;
+    padding:8px 10px;display:flex;gap:8px;
+    align-items:center;justify-content:space-between;
+    flex-wrap:wrap;flex-shrink:0;
+  }
+
+  /* dpad — turn+move */
+  #dpad{display:grid;grid-template-columns:repeat(4,38px);gap:3px;}
+  #dpad button{width:38px;height:38px;padding:0;font-size:15px;
+    background:#122018;color:#a0c8a0;border:.5px solid #2a4a30;border-radius:6px;}
+  #dpad button:disabled{opacity:.25;cursor:default;}
+
+  /* dice */
+  #dice-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;}
+  #dice-face{width:52px;height:52px;border-radius:9px;background:#0e1e10;
+    border:1.5px solid #2a4a30;cursor:pointer;}
+  #dice-face:hover:not(.disabled){border-color:#5a9060;}
+  #dice-face.rolling{animation:shake .45s ease;}
+  #dice-face.disabled{opacity:.4;cursor:default;pointer-events:none;}
+  #dice-lbl{font-size:11px;color:#4a7a50;}
+
+  /* status */
+  #center-info{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;}
+  #shadow-timer{font-size:14px;color:#e0a040;font-weight:500;text-align:center;min-height:20px;}
+  #status-msg{font-size:11px;color:#4a7a50;font-style:italic;text-align:center;max-width:140px;}
+
+  /* action buttons */
+  #action-btns{display:flex;flex-direction:column;gap:5px;min-width:88px;}
+  #action-btns button{font-size:12px;padding:6px 10px;width:auto;}
+
+  @keyframes shake{
+    0%{transform:rotate(0)scale(1)}15%{transform:rotate(-12deg)scale(1.1)}
+    35%{transform:rotate(10deg)scale(1.08)}55%{transform:rotate(-8deg)scale(1.05)}
+    75%{transform:rotate(5deg)scale(1.02)}100%{transform:rotate(0)scale(1)}
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrap">
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-pill" id="pill-warden">🕯 Warden</div>
+    <div id="shadow-pills"></div>
+    <div id="round-bar" style="margin-left:auto;display:flex;align-items:center;gap:5px;border:none;padding:0;">
+      <span style="font-size:11px;color:#4a7a50;">Round</span>
+      <strong id="round-num" style="font-size:12px;color:#8aba80;">1</strong>
+      <span id="idle-timer" style="font-size:10px;color:#3a5a40;margin-left:6px;"></span>
+    </div>
+    <div class="hud-pill" style="cursor:pointer;margin-left:6px;" onclick="doLeave()">✕</div>
+  </div>
+
+  <!-- TURN BANNER -->
+  <div id="turn-banner" style="color:#ffe082;background:#0e1a08;">Loading…</div>
+
+  <!-- TIMER BAR -->
+  <div id="timer-bar-wrap"><div id="timer-bar" style="width:100%"></div></div>
+
+  <!-- VIEWPORT -->
+  <div id="viewport-wrap">
+    <canvas id="rc-canvas"></canvas>
+    <canvas id="minimap-canvas" width="66" height="66"></canvas>
+
+    <!-- PHASE OVERLAY (shown when it's not your turn to act) -->
+    <div id="phase-overlay">
+      <h3 id="overlay-title">Waiting…</h3>
+      <p  id="overlay-body"></p>
+    </div>
+  </div>
+
+  <!-- BOTTOM CONTROLS -->
+  <div id="bottom">
+    <!-- D-PAD: turn-left | fwd | turn-right | back -->
+    <div id="dpad">
+      <button id="btn-turn-left"  onclick="handleTurn(-1)">↺</button>
+      <button id="btn-fwd"        onclick="handleFwd(1)"  >↑</button>
+      <button id="btn-turn-right" onclick="handleTurn(1)" >↻</button>
+      <button id="btn-back"       onclick="handleFwd(-1)" >↓</button>
+    </div>
+
+    <div id="center-info">
+      <div id="dice-wrap">
+        <div id="dice-face" onclick="handleDiceClick()">
+          <canvas id="dc" width="52" height="52"></canvas>
+        </div>
+        <div id="dice-lbl">–</div>
+      </div>
+      <div id="shadow-timer"></div>
+      <div id="status-msg">–</div>
+    </div>
+
+    <div id="action-btns">
+      <button class="primary" id="end-btn" onclick="handleEndTurn()" disabled>End turn →</button>
+      <button onclick="doLeave()">Leave</button>
+    </div>
+  </div>
+
+</div><!-- /game-wrap -->
+
+<!-- MODAL -->
+<div id="modal">
+  <h2 id="modal-title"></h2>
+  <p  id="modal-body"></p>
+  <div class="modal-btns"><button class="primary" id="modal-ok">OK</button></div>
+</div>
+
+<script type="module">
+import { loadSession } from './js/firebase.js';
+import { computeShadow, connectedShadow, TILE } from './js/mapgen.js';
+import { renderFrame, renderMinimap } from './js/raycaster.js';
+import {
+  initGameState, leaveGame, stopShadowTimer,
+  wardenMove, wardenTurn, wardenEndTurn,
+  shadowMove, shadowTurn, shadowEndTurn,
+  rollDice, getLocalState, getMyRole, getMyId,
+} from './js/gamestate.js';
+import { initControls, destroyControls, TURN_SPEED, MOVE_SPEED } from './js/controls.js';
+
+// ── expose mapgen helpers to raycaster via window (cross-module bridge) ──
+import * as mapgenMod from './js/mapgen.js';
+window._sitf_mapgen = mapgenMod;
+
+// ── session ──────────────────────────────────────────────
+const sess = loadSession();
+if (!sess.code || !sess.myId) { window.location.href = 'index.html'; }
+
+// ── canvas setup ─────────────────────────────────────────
+const rcCanvas  = document.getElementById('rc-canvas');
+const mmCanvas  = document.getElementById('minimap-canvas');
+const vpWrap    = document.getElementById('viewport-wrap');
+
+function resizeCanvas() {
+  rcCanvas.width  = vpWrap.clientWidth;
+  rcCanvas.height = vpWrap.clientHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── render loop ──────────────────────────────────────────
+let rafId = null;
+function startRenderLoop() {
+  if (rafId) cancelAnimationFrame(rafId);
+  const loop = () => {
+    const st = getLocalState();
+    if (st) {
+      renderFrame(st, getMyRole(), getMyId(), rcCanvas);
+      renderMinimap(st, getMyRole(), getMyId(), mmCanvas);
+    }
+    rafId = requestAnimationFrame(loop);
+  };
+  rafId = requestAnimationFrame(loop);
+}
+
+// ── dice ─────────────────────────────────────────────────
+const DOTS = {
+  1:[[26,26]],2:[[13,13],[39,39]],3:[[13,13],[26,26],[39,39]],
+  4:[[13,13],[39,13],[13,39],[39,39]],5:[[13,13],[39,13],[26,26],[13,39],[39,39]],
+  6:[[13,9],[39,9],[13,26],[39,26],[13,43],[39,43]]
+};
+function drawDiceFace(val) {
+  const dc = document.getElementById('dc');
+  const ctx = dc.getContext('2d');
+  ctx.clearRect(0,0,52,52);
+  if (!val) {
+    ctx.fillStyle='#3a6040';ctx.font='bold 18px sans-serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('?',26,26);
+    return;
+  }
+  (DOTS[val]||[]).forEach(([x,y])=>{
+    ctx.fillStyle='#5ab870';ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fill();
+  });
+}
+drawDiceFace(0);
+
+let diceRolling = false;
+window.handleDiceClick = () => {
+  const st = getLocalState();
+  if (!st || st.phase !== 'warden_roll' || getMyRole() !== 'warden' || diceRolling) return;
+  diceRolling = true;
+  const face = document.getElementById('dice-face');
+  face.classList.add('rolling');
+  document.getElementById('dice-lbl').textContent = 'Rolling…';
+  let t = 0;
+  const iv = setInterval(async () => {
+    t++;
+    drawDiceFace(Math.ceil(Math.random()*6));
+    if (t >= 14) {
+      clearInterval(iv);
+      face.classList.remove('rolling');
+      face.classList.add('disabled');
+      const roll = Math.ceil(Math.random()*6);
+      drawDiceFace(roll);
+      document.getElementById('dice-lbl').textContent = 'Rolled ' + roll + '!';
+      await rollDice(roll);
+      diceRolling = false;
+    }
+  }, 55);
+};
+
+// ── controls ─────────────────────────────────────────────
+window.handleTurn = async (dir) => {
+  const st = getLocalState(), role = getMyRole();
+  if (!st) return;
+  if (role === 'warden') await wardenTurn(dir * TURN_SPEED);
+  else if (st.phase === 'shadow_move') await shadowTurn(dir * TURN_SPEED);
+};
+
+window.handleFwd = async (dir) => {
+  const st = getLocalState(), role = getMyRole();
+  if (!st) return;
+  if (role === 'warden' && st.phase === 'warden_move') await wardenMove(dir);
+  else if (role !== 'warden' && st.phase === 'shadow_move') await shadowMove(dir);
+};
+
+window.handleEndTurn = async () => {
+  const role = getMyRole(), st = getLocalState();
+  if (!st) return;
+  if (role === 'warden' && st.phase === 'warden_move') {
+    document.getElementById('end-btn').disabled = true;
+    await wardenEndTurn();
+  } else if (role !== 'warden' && st.phase === 'shadow_move') {
+    document.getElementById('end-btn').disabled = true;
+    await shadowEndTurn();
+  }
+};
+
+initControls({
+  onTurn:  dir  => handleTurn(Math.sign(dir)),
+  onMove:  dir  => handleFwd(Math.sign(dir)),
+  onRoll:  ()   => handleDiceClick(),
+  onEnd:   ()   => handleEndTurn(),
+});
+
+// ── HUD helpers ───────────────────────────────────────────
+function setBanner(txt, color) {
+  const b = document.getElementById('turn-banner');
+  b.textContent = txt; b.style.color = color;
+  b.style.background = color === '#ffe082' ? '#0e1a08' : '#08080e';
+}
+function setStatus(msg) { document.getElementById('status-msg').textContent = msg; }
+function setOverlay(show, title, body) {
+  const el = document.getElementById('phase-overlay');
+  el.classList.toggle('show', show);
+  if (title) document.getElementById('overlay-title').textContent = title;
+  if (body)  document.getElementById('overlay-body').textContent  = body;
+}
+function enableDpad(on) {
+  ['btn-turn-left','btn-turn-right','btn-fwd','btn-back'].forEach(id => {
+    const b = document.getElementById(id); if (b) b.disabled = !on;
+  });
+}
+function enableDice(on) {
+  const d = document.getElementById('dice-face');
+  if (!d) return;
+  if (on) { d.classList.remove('disabled'); document.getElementById('dice-lbl').textContent = 'tap to roll'; }
+  else    { d.classList.add('disabled'); }
+}
+
+// ── gamestate callbacks ───────────────────────────────────
+initGameState({
+  onStateChange(st) {
+    const myRole = getMyRole(), myId = getMyId();
+    const players = st.players || {};
+
+    // round counter
+    document.getElementById('round-num').textContent = st.round || 1;
+
+    // hud pills
+    Object.keys(players).forEach(id => {
+      const el = players[id].role === 'warden'
+        ? document.getElementById('pill-warden')
+        : document.getElementById('pill_' + id);
+      if (!el) return;
+      const frozen = st.shadowFrozen?.[id];
+      const isWarden = players[id].role === 'warden';
+      const active = (st.phase === 'warden_move' && isWarden)
+                  || (st.phase === 'warden_roll' && isWarden)
+                  || (st.phase === 'shadow_move' && !isWarden && !frozen);
+      el.className = 'hud-pill' + (frozen ? ' frozen' : active ? ' active' : '');
+    });
+
+    // build shadow pills if not yet built
+    if (!document.getElementById('pill_' + Object.keys(players).find(id => players[id].role !== 'warden'))) {
+      const pills = document.getElementById('shadow-pills');
+      pills.innerHTML = '';
+      Object.entries(players).forEach(([id, p]) => {
+        if (p.role === 'warden') return;
+        const d = document.createElement('div');
+        d.className = 'hud-pill'; d.id = 'pill_' + id;
+        d.style.borderColor = p.color; d.style.color = p.color;
+        d.textContent = '▲ ' + p.name;
+        pills.appendChild(d);
+      });
+    }
+
+    // moves left during warden move
+    if (st.phase === 'warden_move' && myRole === 'warden') {
+      setStatus('Move: ' + st.movesLeft + ' step' + (st.movesLeft !== 1 ? 's' : '') + ' left');
+      document.getElementById('end-btn').disabled = false;
+      enableDpad(true);
+    }
+  },
+
+  onPhaseChange(phase, st) {
+    const myRole = getMyRole(), myId = getMyId();
+    const isWarden = myRole === 'warden';
+    enableDpad(false);
+    enableDice(false);
+    document.getElementById('end-btn').disabled = true;
+    document.getElementById('timer-bar-wrap').classList.remove('show');
+    setOverlay(false);
+    drawDiceFace(0);
+
+    if (phase === 'shadow_move') {
+      setBanner('Shadowlings move — 60 seconds!', '#9090e0');
+      document.getElementById('timer-bar-wrap').classList.add('show');
+      document.getElementById('timer-bar').style.width = '100%';
+      if (!isWarden) {
+        const frozen = st.shadowFrozen?.[myId];
+        if (frozen) {
+          setStatus('You are frozen! Another shadowling must reach your tile.');
+          setOverlay(true, 'You are frozen!', 'Another shadowling must reach your tile to free you.');
+        } else {
+          setStatus('Move and turn to find a hiding spot.');
+          enableDpad(true);
+          document.getElementById('end-btn').disabled = false;
+        }
+      } else {
+        setStatus('Shadowlings are moving…');
+        setOverlay(true, 'Shadowlings moving', 'Watch the clock — they have 60 seconds.');
+      }
+      // hide dice for shadowlings
+      if (!isWarden) {
+        document.getElementById('dice-wrap').style.display = 'none';
+      }
+    }
+
+    if (phase === 'warden_roll') {
+      setBanner("Warden's turn — roll the dice!", '#ffe082');
+      if (isWarden) {
+        enableDice(true);
+        setStatus('Roll to get your move count.');
+        document.getElementById('dice-wrap').style.display = 'flex';
+        setOverlay(false);
+      } else {
+        setStatus('Warden is rolling…');
+        setOverlay(true, 'Warden rolling', 'The light is about to move…');
+      }
+    }
+
+    if (phase === 'warden_move') {
+      setBanner('Warden moves — stay hidden!', '#ffe082');
+      if (isWarden) {
+        enableDpad(true);
+        document.getElementById('end-btn').disabled = false;
+        setStatus('Move up to ' + st.movesLeft + ' steps.');
+        setOverlay(false);
+      } else {
+        setStatus('The warden is moving…');
+        setOverlay(true, 'Warden is moving', 'Stay in shadow — the light is shifting!');
+      }
+    }
+
+    if (phase === 'ended') {
+      enableDpad(false); enableDice(false);
+      document.getElementById('end-btn').disabled = true;
+    }
+  },
+
+  onTimerTick(secondsLeft) {
+    const el = document.getElementById('shadow-timer');
+    if (el) el.textContent = secondsLeft > 0 ? '⏱ ' + secondsLeft + 's' : '';
+    const bar = document.getElementById('timer-bar');
+    if (bar) bar.style.width = ((secondsLeft / 60) * 100).toFixed(1) + '%';
+  },
+
+  onModal(title, body, btnTxt, onOk) {
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').textContent  = body;
+    const btn = document.getElementById('modal-ok');
+    btn.textContent = btnTxt || 'OK';
+    btn.onclick = () => {
+      document.getElementById('modal').classList.remove('open');
+      onOk?.();
+    };
+    document.getElementById('modal').classList.add('open');
+  },
+});
+
+window.doLeave = () => leaveGame();
+
+startRenderLoop();
+</script>
+</body>
+</html>

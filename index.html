@@ -526,7 +526,8 @@ async function placeShadowling(tx,ty){
   if(map[ty][tx]===TREE){setStatus('Cannot place on a tree.');return;}
   const shadow=computeShadow(map,cols,rows,wx,wy);
   if(!shadow.has(ty*cols+tx)){setStatus('Choose a shadow tile (darker area).');return;}
-  await update(dbRef,{'shadowPositions/'+myId:{x:tx,y:ty},lastActionAt:Date.now()});
+  const placeUpd={['shadowPositions/'+myId]:{x:tx,y:ty},lastActionAt:Date.now()};
+  await update(dbRef,placeUpd);
   setStatus('Placed! Waiting for others…');
 }
 
@@ -551,7 +552,7 @@ async function moveShadowling(tx,ty){
   if(!shadow.has(ty*cols+tx)){setStatus('That tile is lit — stay in shadow.');return;}
   const reach=connectedShadow(shadow,cols,pos.x,pos.y);
   if(!reach.has(ty*cols+tx)){setStatus('No shadow path connects you there.');return;}
-  const upd={'shadowPositions/'+myId:{x:tx,y:ty},lastActionAt:Date.now()};
+  const upd={['shadowPositions/'+myId]:{x:tx,y:ty},lastActionAt:Date.now()};
   // unfreeze any frozen shadowling already on that tile
   const snap=await get(dbRef);const st=snap.val();
   Object.entries(st.shadowFrozen||{}).forEach(([fid,frozen])=>{
@@ -570,7 +571,7 @@ window.sendEndTurn=async()=>{
     await update(dbRef,{phase:'shadow_move',lastActionAt:Date.now()});
     $('end-btn').disabled=true;
   } else if(localState.phase==='shadow_move'&&myRole!=='warden'){
-    await update(dbRef,{'shadowDone/'+myId:true,lastActionAt:Date.now()});
+    await update(dbRef,{['shadowDone/'+myId]:true,lastActionAt:Date.now()});
     $('end-btn').disabled=true;setStatus('Waiting for others…');
     const snap=await get(dbRef);const st=snap.val();
     const players=st.players||{};
@@ -764,7 +765,7 @@ window.leaveGame=async()=>{
         else{
           await remove(ref(db,'games/'+gameCode+'/players/'+myId));
           if(myRole==='warden')await update(ref(db,'games/'+gameCode),{phase:'ended',status:'ended',winner:'timeout'});
-          else if(st.phase==='shadow_move')await update(ref(db,'games/'+gameCode),{'shadowDone/'+myId:true});
+          else if(st.phase==='shadow_move')await update(ref(db,'games/'+gameCode),{['shadowDone/'+myId]:true});
         }
       }
     }catch(e){console.error(e);}

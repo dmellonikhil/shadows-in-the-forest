@@ -382,6 +382,11 @@ function enterGame(state){
   showScreen('game-screen');
   buildHUD(state);
   setupCanvas(state.mapData);
+  // hide dice UI for shadowlings — they never roll
+  if(myRole!=='warden'){
+    const df=$('dice-face');if(df)df.style.display='none';
+    const dl=$('dice-lbl');if(dl)dl.style.display='none';
+  }
   startGameListener();
   startRenderLoop();
   startIdleInterval();
@@ -687,17 +692,55 @@ function renderGame(){
     if(!pos||pos.x==null)return;
     const p=players[id];if(!p)return;
     const frozen=st.shadowFrozen?.[id],isMe=id===myId;
-    const inShadow=shadow.has(pos.y*cols+pos.x);
-    if(!inShadow&&!frozen&&!isMe)return; // hidden in light unless frozen or me
+    const inLight=!shadow.has(pos.y*cols+pos.x);
+
+    // visibility rules:
+    // - warden: only sees shadowlings in lit (non-shadow) tiles, or frozen ones (always visible to all)
+    // - shadowlings: only see themselves (isMe), and frozen ones (always visible)
+    if(myRole==='warden' && !inLight && !frozen) return;
+    if(myRole!=='warden' && !isMe && !frozen) return;
+
     const cx2=pos.x*TW+TW/2,cy2=pos.y*TH+TH/2;
-    const bob=Math.sin(animF*.05+pos.x*1.1)*2,sw=Math.sin(animF*.04+pos.x*.9)*1.5;
-    ctx.globalAlpha=frozen?.38:1;
-    if(frozen){ctx.strokeStyle=p.color;ctx.lineWidth=1.5;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(cx2,cy2+bob,15,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
-    ctx.fillStyle=p.color;ctx.beginPath();ctx.ellipse(cx2+sw,cy2+bob,9,11,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='rgba(0,0,0,.5)';ctx.beginPath();ctx.ellipse(cx2+sw,cy2+bob-5,5,6,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,.78)';ctx.beginPath();ctx.arc(cx2+sw-2,cy2+bob-6,1.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(cx2+sw+2,cy2+bob-6,1.5,0,Math.PI*2);ctx.fill();
-    if(isMe&&!frozen&&st.phase==='shadow_move'){ctx.strokeStyle=p.color;ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.beginPath();ctx.arc(cx2+sw,cy2+bob,15,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
+    // frozen shadowlings don't bob — they're stuck
+    const bob=frozen?0:Math.sin(animF*.05+pos.x*1.1)*2;
+    const sw=frozen?0:Math.sin(animF*.04+pos.x*.9)*1.5;
+
     ctx.globalAlpha=1;
+
+    if(frozen){
+      // pulsing icy ring to indicate frozen
+      const fpulse=0.6+Math.sin(animF*.08)*0.4;
+      ctx.strokeStyle=`rgba(160,210,255,${fpulse})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(cx2,cy2,16,0,Math.PI*2);ctx.stroke();
+      // grey body
+      ctx.fillStyle='#6a7a6a';
+      ctx.beginPath();ctx.ellipse(cx2,cy2,9,11,0,0,Math.PI*2);ctx.fill();
+      // grey head
+      ctx.fillStyle='#3a4a3a';
+      ctx.beginPath();ctx.ellipse(cx2,cy2-5,5,6,0,0,Math.PI*2);ctx.fill();
+      // dim eyes
+      ctx.fillStyle='rgba(180,200,180,.5)';
+      ctx.beginPath();ctx.arc(cx2-2,cy2-6,1.5,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(cx2+2,cy2-6,1.5,0,Math.PI*2);ctx.fill();
+      // name tag so warden knows who's frozen
+      ctx.fillStyle='rgba(160,210,255,.85)';
+      ctx.font='9px system-ui';ctx.textAlign='center';ctx.textBaseline='bottom';
+      ctx.fillText(p.name,cx2,cy2-18);
+    } else {
+      // normal shadowling
+      ctx.fillStyle=p.color;ctx.beginPath();ctx.ellipse(cx2+sw,cy2+bob,9,11,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(0,0,0,.5)';ctx.beginPath();ctx.ellipse(cx2+sw,cy2+bob-5,5,6,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.78)';
+      ctx.beginPath();ctx.arc(cx2+sw-2,cy2+bob-6,1.5,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(cx2+sw+2,cy2+bob-6,1.5,0,Math.PI*2);ctx.fill();
+      // dashed ring on my shadowling during my turn
+      if(isMe&&st.phase==='shadow_move'){
+        ctx.strokeStyle=p.color;ctx.lineWidth=1;ctx.setLineDash([2,3]);
+        ctx.beginPath();ctx.arc(cx2+sw,cy2+bob,15,0,Math.PI*2);ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
   });
 
   // warden dot

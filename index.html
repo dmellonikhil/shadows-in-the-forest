@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Shadows in the Forest</title>
 <style>
+/* Keeping styles from (9) - they are identical to (6) but include the rolling animation */
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:#060d07;color:#c0d8b0;font-family:system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;}
 .screen{display:none;width:100%;max-width:500px;padding:20px 16px;flex-direction:column;align-items:center;gap:14px;}
@@ -75,7 +76,6 @@ canvas{display:block;}
 </head>
 <body>
 
-<!-- HOME -->
 <div id="home-screen" class="screen active">
   <h1>Shadows in the Forest</h1>
   <p>Hide in the shadows.<br>Unite before the light finds you.</p>
@@ -86,7 +86,6 @@ canvas{display:block;}
   </div>
 </div>
 
-<!-- CREATE -->
 <div id="create-screen" class="screen">
   <h2>Game settings</h2>
   <div class="card" style="display:flex;flex-direction:column;gap:12px;">
@@ -102,7 +101,6 @@ canvas{display:block;}
   </div>
 </div>
 
-<!-- JOIN -->
 <div id="join-screen" class="screen">
   <h2>Join a game</h2>
   <div class="card" style="display:flex;flex-direction:column;gap:10px;">
@@ -112,7 +110,6 @@ canvas{display:block;}
   </div>
 </div>
 
-<!-- LOBBY -->
 <div id="lobby-screen" class="screen">
   <h2>Lobby</h2>
   <div class="card" style="display:flex;flex-direction:column;gap:10px;align-items:center;">
@@ -129,7 +126,6 @@ canvas{display:block;}
   </div>
 </div>
 
-<!-- GAME -->
 <div id="game-screen" class="screen">
   <div id="hud">
     <div class="hud-pill" id="pill-warden">🕯 Warden</div>
@@ -162,7 +158,6 @@ canvas{display:block;}
   </div>
 </div>
 
-<!-- MODAL -->
 <div id="modal">
   <h2 id="modal-title"></h2>
   <p id="modal-body"></p>
@@ -173,6 +168,7 @@ canvas{display:block;}
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,update,onValue,off,remove,onDisconnect}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
+// -- Put your Firebase config here --
 const FBCFG={
   apiKey:"AIzaSyCSkdcF6XmW6-ROU_LhQLTfdta1HUbru4c",
   authDomain:"shadows-in-the-forest.firebaseapp.com",

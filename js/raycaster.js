@@ -3,12 +3,11 @@
 // Draws into a provided canvas context.
 // No Firebase dependency — pure rendering.
 
-import { TILE } from './mapgen.js';
+import { TILE, computeShadow } from './mapgen.js';
 
 const FOV        = Math.PI * 75 / 180;  // 75 degrees
 const HALF_FOV   = FOV / 2;
 const MAX_DIST   = 20;                  // tiles before wall is invisible
-const MINIMAP_TILE = 6;                 // px per tile on minimap
 
 // Tree wall colours (distance-shaded)
 const WALL_LIGHT  = [22, 58, 24];       // close wall RGB
@@ -51,7 +50,7 @@ export function renderFrame(state, myRole, myId, canvas) {
   ctx.fillRect(0, H / 2, W, H / 2);
 
   // precompute shadow set for visibility
-  const { computeShadow } = window._sitf_mapgen;
+  // computeShadow imported directly from mapgen.js
   const wx = state.wardenPos.x, wy = state.wardenPos.y;
   const shadowSet = computeShadow(map, cols, rows, wx, wy);
 
@@ -293,76 +292,4 @@ function hexToRGB(hex) {
   return [r, g, b];
 }
 
-// ── MINIMAP RENDER ───────────────────────────────────────
-// Draws the minimap into the provided canvas.
-// For warden: shows all walkable tiles, blacks out shadow regions.
-// For shadowlings: shows only connected shadow region from their position.
-export function renderMinimap(state, myRole, myId, canvas) {
-  if (!state?.mapData) return;
-  const ctx = canvas.getContext('2d');
-  const { map, cols, rows } = state.mapData;
-  const T = MINIMAP_TILE;
-  canvas.width  = cols * T;
-  canvas.height = rows * T;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const { computeShadow, connectedShadow } = window._sitf_mapgen;
-  const { x: wx, y: wy } = state.wardenPos;
-  const shadowSet = computeShadow(map, cols, rows, wx, wy);
-
-  let revealedSet;
-  if (myRole === 'warden') {
-    // warden sees lit (non-shadow) empty tiles
-    revealedSet = new Set();
-    for (let ty = 0; ty < rows; ty++)
-      for (let tx = 0; tx < cols; tx++) {
-        const k = ty * cols + tx;
-        if (map[ty][tx] === TILE.EMPTY && !shadowSet.has(k)) revealedSet.add(k);
-      }
-  } else {
-    const pos = state.shadowPositions?.[myId];
-    if (pos && pos.x != null) {
-      revealedSet = connectedShadow(shadowSet, cols, pos.x, pos.y);
-    } else {
-      revealedSet = new Set();
-    }
-  }
-
-  for (let ty = 0; ty < rows; ty++) {
-    for (let tx = 0; tx < cols; tx++) {
-      const k = ty * cols + tx;
-      const px = tx * T, py = ty * T;
-      if (map[ty][tx] === TILE.TREE) {
-        ctx.fillStyle = '#0a140a';
-        ctx.fillRect(px, py, T, T);
-      } else if (revealedSet.has(k)) {
-        ctx.fillStyle = myRole === 'warden' ? '#2a4a28' : '#1a3a28';
-        ctx.fillRect(px, py, T, T);
-      } else {
-        ctx.fillStyle = '#040804';
-        ctx.fillRect(px, py, T, T);
-      }
-    }
-  }
-
-  // player dot + facing arrow
-  let px, py, angle;
-  if (myRole === 'warden') {
-    px = wx; py = wy; angle = state.wardenPos.angle ?? 0;
-    ctx.fillStyle = '#ffe082';
-  } else {
-    const pos = state.shadowPositions?.[myId];
-    if (!pos || pos.x == null) return;
-    px = pos.x; py = pos.y; angle = pos.angle ?? 0;
-    ctx.fillStyle = state.players?.[myId]?.color || '#a0c8a0';
-  }
-
-  const cx = px * T + T/2, cy = py * T + T/2;
-  ctx.beginPath(); ctx.arc(cx, cy, T * 0.4, 0, Math.PI*2); ctx.fill();
-  // facing arrow
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(angle) * T * 0.9, cy + Math.sin(angle) * T * 0.9);
-  ctx.stroke();
-}
+// Minimap rendering has been moved to js/minimap.js

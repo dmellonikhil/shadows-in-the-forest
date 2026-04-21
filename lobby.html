@@ -61,8 +61,11 @@ document.getElementById('lobby-wait').style.display = isHost ? 'none'  : 'block'
 onValue(dbRef, snap => {
   if (!snap.exists()) { window.location.href = 'index.html'; return; }
   const st = snap.val();
+  const players = st.players || {};
 
-  if (st.kicked?.[myId]) {
+  // only check kicked if our player record is already in the game
+  // (prevents stale kicked data from a previous game firing on fresh joins)
+  if (players[myId] && st.kicked?.[myId]) {
     off(dbRef);
     sessionStorage.setItem('sitf_msg', 'The host removed you from the lobby.');
     clearSession();
@@ -72,7 +75,8 @@ onValue(dbRef, snap => {
 
   renderLobby(st);
 
-  if (st.phase !== 'lobby') {
+  // only redirect to game once our player record exists AND phase has changed
+  if (players[myId] && st.phase !== 'lobby') {
     off(dbRef);
     window.location.href = 'game.html';
   }

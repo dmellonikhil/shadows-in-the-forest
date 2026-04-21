@@ -10,189 +10,173 @@
 
 <div class="screen active" style="gap:14px;">
   <h2>Lobby</h2>
-
   <div class="card" style="display:flex;flex-direction:column;gap:10px;align-items:center;">
     <p style="font-size:12px;color:#5a8060;">Share this code</p>
     <div class="code-display" id="lobby-code" onclick="copyCode()">------</div>
     <p style="font-size:11px;color:#3a6040;">tap to copy</p>
   </div>
-
   <div class="card" style="display:flex;flex-direction:column;gap:10px;">
     <label>Players (<span id="lobby-count">0</span> / <span id="lobby-max">-</span>)</label>
     <div id="lobby-list"></div>
     <div class="err" id="lobby-err"></div>
-    <button class="primary" id="start-btn" onclick="hostStart()" style="display:none;" disabled>
-      Waiting for players…
-    </button>
+    <button class="primary" id="start-btn" onclick="window.hostStart()" style="display:none;" disabled>Waiting for players…</button>
     <p id="lobby-wait" style="font-size:12px;color:#3a6040;">Waiting for host to start…</p>
   </div>
-
-  <button onclick="leaveLobby()" style="max-width:200px;">← Leave</button>
+  <button onclick="window.leaveLobby()" style="max-width:200px;">← Leave</button>
 </div>
 
-<!-- MODAL -->
 <div id="modal">
   <h2 id="modal-title"></h2>
-  <p  id="modal-body"></p>
-  <div class="modal-btns"><button class="primary" id="modal-ok" onclick="closeModal()">OK</button></div>
+  <p id="modal-body"></p>
+  <div class="modal-btns"><button class="primary" id="modal-ok" onclick="document.getElementById('modal').classList.remove('open')">OK</button></div>
 </div>
 
 <script type="module">
 import { getDB, loadSession, clearSession } from './js/firebase.js';
 import { computeShadow, randomShadowTiles } from './js/mapgen.js';
-import {
-  ref, get, set, update, onValue, off, remove, onDisconnect
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { ref, get, set, update, onValue, off, remove, onDisconnect }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-const db   = getDB();
-const sess = loadSession();
-const { code, myId, myRole, myName } = sess;
+const db  = getDB();
+const raw = loadSession();
+let code    = raw.code;
+let myId    = raw.myId;
+let myRole  = raw.myRole;
+let myName  = raw.myName;
 
 if (!code || !myId) { window.location.href = 'index.html'; }
 
 const dbRef = ref(db, 'games/' + code);
 document.getElementById('lobby-code').textContent = code;
+window.copyCode = () => navigator.clipboard?.writeText(code);
 
-const isHost = myRole === 'warden';
-document.getElementById('start-btn').style.display = isHost ? 'block' : 'none';
-document.getElementById('lobby-wait').style.display = isHost ? 'none'  : 'block';
+// ── boot ─────────────────────────────────────────────────
+async function boot() {
+  // If myRole is missing (race on fast nav), recover from Firebase
+  if (!myRole) {
+    try {
+      const snap = await get(dbRef);
+      if (snap.exists()) {
+        const p = snap.val().players?.[myId];
+        if (p?.role) {
+          myRole = p.role;
+          sessionStorage.setItem('sitf_myRole', myRole);
+        }
+      }
+    } catch(e) { console.error('role recovery failed', e); }
+  }
 
-// ── LISTENER ──────────────────────────────────────────────
-onValue(dbRef, snap => {
-  if (!snap.exists()) { window.location.href = 'index.html'; return; }
-  const st = snap.val();
-  const players = st.players || {};
+  const isHost = myRole === 'warden';
+  document.getElementById('start-btn').style.display = isHost ? 'block' : 'none';
+  document.getElementById('lobby-wait').style.display = isHost ? 'none' : 'block';
 
-  // only check kicked if our player record is already in the game
-  // (prevents stale kicked data from a previous game firing on fresh joins)
-  if (players[myId] && st.kicked?.[myId]) {
+  // attach host-only functions to window now that isHost is resolved
+  window.hostStart = async () => {
+    const snap = await get(dbRef);
+    const st   = snap.val();
+    const players   = st.players || {};
+    const shadowIds = Object.keys(players).filter(id => players[id].role !== 'warden');
+    if (shadowIds.length < st.maxShadows) { showErr('Lobby is not full yet.'); return; }
+    const { map, cols, rows } = st.mapData;
+    const shadow = computeShadow(map, cols, rows, 1, 1);
+    const starts = randomShadowTiles(map, cols, rows, shadow, shadowIds.length);
+    const sp = {}, sf = {}, stf = {}, sd = {};
+    shadowIds.forEach((id, i) => {
+      const pos = starts[i] || { x: cols - 2, y: i + 1 };
+      sp[id]  = { x: pos.x, y: pos.y, angle: Math.PI };
+      sf[id]  = false; stf[id] = false; sd[id] = false;
+    });
+    await update(dbRef, {
+      status: 'playing', phase: 'shadow_move',
+      shadowPositions: sp, shadowFrozen: sf,
+      shadowTimerFrozen: stf, shadowDone: sd,
+      lastActionAt: Date.now(),
+    });
+  };
+
+  window.kickPlayer = async (tid, tname) => {
+    if (!isHost) return;
+    await remove(ref(db, 'games/' + code + '/players/' + tid));
+    await set(ref(db, 'games/' + code + '/kicked/' + tid), true);
+    showErr(tname + ' removed.');
+    setTimeout(() => showErr(''), 3000);
+  };
+
+  window.leaveLobby = async () => {
     off(dbRef);
-    sessionStorage.setItem('sitf_msg', 'The host removed you from the lobby.');
+    try {
+      const snap = await get(ref(db, 'games/' + code));
+      if (snap.exists()) {
+        const st  = snap.val();
+        const rem = Object.keys(st.players || {}).filter(id => id !== myId);
+        if (rem.length === 0) await remove(ref(db, 'games/' + code));
+        else await remove(ref(db, 'games/' + code + '/players/' + myId));
+      }
+    } catch(e) { console.error(e); }
     clearSession();
     window.location.href = 'index.html';
-    return;
-  }
+  };
 
-  renderLobby(st);
+  // ── FIREBASE LISTENER ────────────────────────────────────
+  onValue(dbRef, snap => {
+    if (!snap.exists()) { window.location.href = 'index.html'; return; }
+    const st      = snap.val();
+    const players = st.players || {};
 
-  // only redirect to game once our player record exists AND phase has changed
-  if (players[myId] && st.phase !== 'lobby') {
-    off(dbRef);
-    window.location.href = 'game.html';
-  }
-});
+    // kicked check — only fire once our record is in Firebase
+    if (players[myId] && st.kicked?.[myId]) {
+      off(dbRef);
+      sessionStorage.setItem('sitf_msg', 'The host removed you from the lobby.');
+      clearSession();
+      window.location.href = 'index.html';
+      return;
+    }
 
-// ── RENDER LOBBY ──────────────────────────────────────────
-function renderLobby(st) {
+    renderLobby(st, isHost);
+
+    // redirect to game — only once our record exists and phase has advanced
+    if (players[myId] && st.phase !== 'lobby') {
+      off(dbRef);
+      window.location.href = 'game.html';
+    }
+  });
+}
+
+// ── RENDER ───────────────────────────────────────────────
+function renderLobby(st, isHost) {
   const players  = st.players || {};
   const total    = Object.keys(players).length;
-  const maxTotal = 1 + st.maxShadows;
   const shadows  = total - 1;
   const isFull   = shadows >= st.maxShadows;
 
   document.getElementById('lobby-count').textContent = total;
-  document.getElementById('lobby-max').textContent   = maxTotal;
+  document.getElementById('lobby-max').textContent   = 1 + st.maxShadows;
 
   const list = document.getElementById('lobby-list');
   list.innerHTML = '';
-
-  // render all players — "you" is highlighted, no early-return guard
   Object.entries(players).forEach(([id, p]) => {
     const isMe    = id === myId;
     const canKick = isHost && !isMe && p.role !== 'warden';
     const d = document.createElement('div');
     d.className = 'player-row' + (isMe ? ' me' : '');
-    d.innerHTML = `
-      <div class="player-dot" style="background:${p.color || '#ffe082'}"></div>
-      <span class="player-name">${p.name}${isMe ? ' (you)' : ''}</span>
-      <span class="player-role">${p.role === 'warden' ? '🕯 Warden' : '▲ Shadowling'}</span>
-      ${canKick ? `<button class="kick-btn" onclick="kickPlayer('${id}','${p.name}')">Remove</button>` : ''}
-    `;
+    d.innerHTML =
+      `<div class="player-dot" style="background:${p.color || '#ffe082'}"></div>` +
+      `<span class="player-name">${p.name}${isMe ? ' (you)' : ''}</span>` +
+      `<span class="player-role">${p.role === 'warden' ? '🕯 Warden' : '▲ Shadowling'}</span>` +
+      (canKick ? `<button class="kick-btn" onclick="window.kickPlayer('${id}','${p.name}')">Remove</button>` : '');
     list.appendChild(d);
   });
 
   if (isHost) {
     const btn = document.getElementById('start-btn');
     btn.disabled    = !isFull;
-    btn.textContent = isFull
-      ? 'Start game →'
-      : `Waiting for players (${shadows}/${st.maxShadows})…`;
+    btn.textContent = isFull ? 'Start game →' : `Waiting for players (${shadows}/${st.maxShadows})…`;
   }
 }
 
-// ── HOST ACTIONS ──────────────────────────────────────────
-window.hostStart = async () => {
-  const snap = await get(dbRef);
-  const st   = snap.val();
-  const players = st.players || {};
-  const shadowIds = Object.keys(players).filter(id => players[id].role !== 'warden');
-  if (shadowIds.length < st.maxShadows) {
-    showErr('Lobby is not full yet.');
-    return;
-  }
+function showErr(msg) { document.getElementById('lobby-err').textContent = msg; }
 
-  // randomly place all shadowlings in shadow tiles
-  const { map, cols, rows } = st.mapData;
-  const shadow = computeShadow(map, cols, rows, 1, 1);
-  const starts = randomShadowTiles(map, cols, rows, shadow, shadowIds.length);
-
-  const sp = {}, sf = {}, stf = {}, sd = {};
-  shadowIds.forEach((id, i) => {
-    const pos = starts[i] || { x: cols - 2, y: i + 1 };
-    sp[id]  = { x: pos.x, y: pos.y, angle: Math.PI }; // face left (toward warden)
-    sf[id]  = false;
-    stf[id] = false;
-    sd[id]  = false;
-  });
-
-  await update(dbRef, {
-    status:            'playing',
-    phase:             'shadow_move',
-    shadowPositions:   sp,
-    shadowFrozen:      sf,
-    shadowTimerFrozen: stf,
-    shadowDone:        sd,
-    lastActionAt:      Date.now(),
-  });
-};
-
-window.kickPlayer = async (tid, tname) => {
-  if (!isHost) return;
-  await remove(ref(db, 'games/' + code + '/players/' + tid));
-  await set(ref(db, 'games/' + code + '/kicked/' + tid), true);
-  showErr(tname + ' removed.');
-  setTimeout(() => showErr(''), 3000);
-};
-
-// ── LEAVE ─────────────────────────────────────────────────
-window.leaveLobby = async () => {
-  off(dbRef);
-  try {
-    const snap = await get(dbRef);
-    if (snap.exists()) {
-      const st  = snap.val();
-      const rem = Object.keys(st.players || {}).filter(id => id !== myId);
-      if (rem.length === 0) await remove(dbRef);
-      else await remove(ref(db, 'games/' + code + '/players/' + myId));
-    }
-  } catch(e) { console.error(e); }
-  clearSession();
-  window.location.href = 'index.html';
-};
-
-// ── UTILS ─────────────────────────────────────────────────
-window.copyCode = () => navigator.clipboard?.writeText(code);
-
-function showErr(msg) {
-  document.getElementById('lobby-err').textContent = msg;
-}
-
-function showModal(title, body) {
-  document.getElementById('modal-title').textContent = title;
-  document.getElementById('modal-body').textContent  = body;
-  document.getElementById('modal').classList.add('open');
-}
-window.closeModal = () => document.getElementById('modal').classList.remove('open');
+boot();
 </script>
 </body>
 </html>

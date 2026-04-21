@@ -2,8 +2,10 @@
 // Initialises Firebase once and exports the db reference.
 // Import this in every page that needs Firebase.
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { initializeApp, getApps, getApp }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const FIREBASE_CONFIG = {
   apiKey:      "AIzaSyCSkdcF6XmW6-ROU_LhQLTfdta1HUbru4c",
@@ -13,12 +15,13 @@ const FIREBASE_CONFIG = {
   appId:       "1:277386752922:web:881b4d7a5b14a151f18023",
 };
 
-let _app, _db;
+let _db;
 
 export function getDB() {
   if (!_db) {
-    _app = initializeApp(FIREBASE_CONFIG);
-    _db  = getDatabase(_app);
+    // reuse existing app if already initialised (avoids duplicate-app error)
+    const app = getApps().length > 0 ? getApp() : initializeApp(FIREBASE_CONFIG);
+    _db = getDatabase(app);
   }
   return _db;
 }

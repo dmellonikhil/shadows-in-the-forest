@@ -84,11 +84,9 @@
 </div>
 
 <script type="module">
-import { initializeApp }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, update, onDisconnect }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { getDB, saveSession } from './js/firebase.js';
+import { ref, set, get, update, onDisconnect }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { generateMap, computeShadow, randomShadowTiles } from './js/mapgen.js';
 
 const S_COLORS = ['#7a50d0','#3a9090','#c05828','#c03070','#2858b0'];

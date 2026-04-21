@@ -124,7 +124,7 @@ canvas{display:block;}
     <label>Players (<span id="lobby-count">0</span> / <span id="lobby-max">-</span>)</label>
     <div id="lobby-list"></div>
     <div class="err" id="lobby-err"></div>
-    <button class="primary" id="start-btn" onclick="hostStartGame()" style="display:none;" disabled>Waiting for players…</button>
+    <button class="primary" id="start-btn" onclick="hostStartGame()" style="display:none;">Start game →</button>
     <p id="lobby-wait" style="font-size:12px;color:#3a6040;">Waiting for host to start…</p>
   </div>
 </div>
@@ -173,7 +173,6 @@ canvas{display:block;}
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,update,onValue,off,remove,onDisconnect}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-// ── FIREBASE ─────────────────────────────────────────────
 const FBCFG={
   apiKey:"AIzaSyCSkdcF6XmW6-ROU_LhQLTfdta1HUbru4c",
   authDomain:"shadows-in-the-forest.firebaseapp.com",
@@ -182,15 +181,12 @@ const FBCFG={
   appId:"1:277386752922:web:881b4d7a5b14a151f18023",
 };
 let db;
-window.addEventListener('load',()=>{
-  try{const app=initializeApp(FBCFG);db=getDatabase(app);}
-  catch(e){alert('Firebase error: '+e.message);}
-});
+window.addEventListener('load',()=>{try{const app=initializeApp(FBCFG);db=getDatabase(app);}catch(e){alert('Firebase: '+e.message);}});
 
 // ── CONSTANTS ────────────────────────────────────────────
 const TW=56,TH=56;
 const S_COLORS=['#7a50d0','#3a9090','#c05828','#c03070','#2858b0'];
-const IDLE_MS=20*60*1000,SHADOW_MS=60000;
+const IDLE_MS=20*60*1000, SHADOW_MS=60000;
 const TREE=1,EMPTY=0;
 
 // ── GLOBALS ──────────────────────────────────────────────
@@ -220,15 +216,18 @@ function generateMap(cols,rows,density){
     }
     if(allEmptyConnected(m,cols,rows))return m;
   }
+  // fallback: minimal trees
   const m=Array.from({length:rows},(_,y)=>Array.from({length:cols},(_,x)=>(x===0||x===cols-1||y===0||y===rows-1)?TREE:EMPTY));
   for(let y=2;y<rows-1;y+=3)for(let x=3;x<cols-1;x+=3)m[y][x]=TREE;
   return m;
 }
+
 function allEmptyConnected(m,cols,rows){
   const empties=[];
   for(let y=0;y<rows;y++)for(let x=0;x<cols;x++)if(m[y][x]===EMPTY)empties.push(y*cols+x);
   if(!empties.length)return false;
-  const vis=new Set([1*cols+1]);const q=[{x:1,y:1}];
+  const vis=new Set([1*cols+1]);
+  const q=[{x:1,y:1}];
   while(q.length){
     const{x,y}=q.shift();
     for(const[dx,dy]of[[0,-1],[0,1],[-1,0],[1,0]]){
@@ -239,28 +238,37 @@ function allEmptyConnected(m,cols,rows){
   return empties.every(k=>vis.has(k));
 }
 
-// ── SHADOW / LIGHT ────────────────────────────────────────
+// ── LIGHT / SHADOW ────────────────────────────────────────
+// Returns Set of tile keys that are IN SHADOW.
+// A tile is in shadow if a ray from warden-center to tile-center passes through any tree tile.
 function computeShadow(map,cols,rows,wx,wy){
-  const shadow=new Set();const lx=wx+0.5,ly=wy+0.5;
-  for(let ty=0;ty<rows;ty++)for(let tx=0;tx<cols;tx++){
-    if(map[ty][tx]===TREE)continue;
-    if(tx===wx&&ty===wy)continue;
-    const dx=tx+0.5-lx,dy=ty+0.5-ly;
-    const dist=Math.sqrt(dx*dx+dy*dy);
-    const steps=Math.ceil(dist*3);let blocked=false;
-    for(let s=1;s<steps&&!blocked;s++){
-      const t=s/steps;
-      const gx=Math.floor(lx+dx*t),gy=Math.floor(ly+dy*t);
-      if(gx<0||gx>=cols||gy<0||gy>=rows)continue;
-      if(gx===tx&&gy===ty)continue;if(gx===wx&&gy===wy)continue;
-      if(map[gy][gx]===TREE)blocked=true;
+  const shadow=new Set();
+  const lx=wx+0.5,ly=wy+0.5;
+  for(let ty=0;ty<rows;ty++){
+    for(let tx=0;tx<cols;tx++){
+      if(map[ty][tx]===TREE)continue;
+      if(tx===wx&&ty===wy)continue;
+      const dx=tx+0.5-lx,dy=ty+0.5-ly;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      const steps=Math.ceil(dist*3);
+      let blocked=false;
+      for(let s=1;s<steps&&!blocked;s++){
+        const t=s/steps;
+        const gx=Math.floor(lx+dx*t),gy=Math.floor(ly+dy*t);
+        if(gx<0||gx>=cols||gy<0||gy>=rows)continue;
+        if(gx===tx&&gy===ty)continue;
+        if(gx===wx&&gy===wy)continue;
+        if(map[gy][gx]===TREE)blocked=true;
+      }
+      if(blocked)shadow.add(ty*cols+tx);
     }
-    if(blocked)shadow.add(ty*cols+tx);
   }
   return shadow;
 }
+
 function connectedShadow(shadow,cols,sx,sy){
-  const k0=sy*cols+sx;if(!shadow.has(k0))return new Set();
+  const k0=sy*cols+sx;
+  if(!shadow.has(k0))return new Set();
   const vis=new Set([k0]);const q=[{x:sx,y:sy}];
   while(q.length){
     const{x,y}=q.shift();
@@ -270,12 +278,6 @@ function connectedShadow(shadow,cols,sx,sy){
     }
   }
   return vis;
-}
-function randomShadowTiles(map,cols,rows,shadowSet,count){
-  const candidates=[];
-  shadowSet.forEach(k=>{const x=k%cols,y=Math.floor(k/cols);if(map[y][x]===EMPTY)candidates.push({x,y});});
-  for(let i=candidates.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[candidates[i],candidates[j]]=[candidates[j],candidates[i]];}
-  return candidates.slice(0,count);
 }
 
 // ── DICE ─────────────────────────────────────────────────
@@ -298,13 +300,10 @@ window.createGame=async()=>{
   const cols=+$('cfg-cols').value,rows=+$('cfg-rows').value,maxP=+$('cfg-maxp').value,density=+$('cfg-trees').value;
   const name=vv('player-name'),map=generateMap(cols,rows,density),code=genCode();
   gameCode=code;myId='p_'+Date.now();myRole='warden';
-  const gs={
-    code,status:'lobby',maxShadows:maxP,
-    mapData:{map,cols,rows},
+  const gs={code,status:'lobby',maxShadows:maxP,mapData:{map,cols,rows},
     players:{[myId]:{name,role:'warden',color:'#ffe082'}},
     wardenPos:{x:1,y:1},shadowPositions:{},shadowFrozen:{},shadowDone:{},
-    kicked:{},phase:'lobby',round:1,lastActionAt:Date.now(),movesLeft:0,winner:null
-  };
+    phase:'lobby',round:1,lastActionAt:Date.now(),movesLeft:0,winner:null};
   await set(ref(db,'games/'+code),gs);
   dbRef=ref(db,'games/'+code);
   onDisconnect(ref(db,'games/'+code+'/players/'+myId)).remove();
@@ -339,44 +338,36 @@ function startLobbyListener(code){
   onValue(ref(db,'games/'+code),snap=>{
     if(!snap.exists()){showScreen('home-screen');return;}
     const st=snap.val();
-    if(players_confirmed(st)&&st.kicked?.[myId]){
-      off(ref(db,'games/'+code));
-      showScreen('home-screen');
-      showModal('Removed','The host removed you from this game.');
-      return;
-    }
-    renderLobby(st,isHost);
-    if(players_confirmed(st)&&st.phase!=='lobby'){
-      off(ref(db,'games/'+code));
-      enterGame(st);
-    }
+    if(st.kicked?.[myId]){off(ref(db,'games/'+code));showScreen('home-screen');showModal('Removed','The host removed you from this game.');return;}
+    renderLobby(st);
+    if(st.phase!=='lobby'){off(ref(db,'games/'+code));enterGame(st);}
   });
 }
-// only act on kicked/phase once our player record is confirmed in Firebase
-function players_confirmed(st){return !!(st.players&&st.players[myId]);}
 
-function renderLobby(st,isHost){
+function renderLobby(st){
   const players=st.players||{};
   const total=Object.keys(players).length;
+  const maxTotal=1+st.maxShadows;
   const shadowCount=total-1;
   const isFull=shadowCount>=st.maxShadows;
   $('lobby-count').textContent=total;
-  $('lobby-max').textContent=1+st.maxShadows;
+  $('lobby-max').textContent=maxTotal;
   const list=$('lobby-list');list.innerHTML='';
+  if(!players[myId])return;
   Object.entries(players).forEach(([id,p])=>{
-    const isMe=id===myId,canKick=isHost&&!isMe&&p.role!=='warden';
+    const isMe=id===myId,canKick=myRole==='warden'&&!isMe&&p.role!=='warden';
     const d=document.createElement('div');
     d.className='player-row'+(isMe?' me':'');
-    d.innerHTML='<div class="player-dot" style="background:'+(p.color||'#ffe082')+'"></div>'
-      +'<span class="player-name">'+p.name+(isMe?' (you)':'')+'</span>'
-      +'<span class="player-role">'+(p.role==='warden'?'🕯 Warden':'▲ Shadowling')+'</span>'
-      +(canKick?'<button class="kick-btn" onclick="kickPlayer(\''+id+'\',\''+p.name+'\')">Remove</button>':'');
+    d.innerHTML=`<div class="player-dot" style="background:${p.color||'#ffe082'}"></div><span class="player-name">${p.name}${isMe?' (you)':''}</span><span class="player-role">${p.role==='warden'?'🕯 Warden':'▲ Shadowling'}</span>${canKick?`<button class="kick-btn" onclick="kickPlayer('${id}','${p.name}')">Remove</button>`:''}`;
     list.appendChild(d);
   });
-  if(isHost){
+  // update start button state for host
+  if(myRole==='warden'){
     const btn=$('start-btn');
-    btn.disabled=!isFull;
-    btn.textContent=isFull?'Start game →':'Waiting for players ('+shadowCount+'/'+st.maxShadows+')…';
+    if(btn){
+      btn.disabled=!isFull;
+      btn.textContent=isFull?'Start game →':'Waiting for players ('+shadowCount+'/'+st.maxShadows+')…';
+    }
   }
 }
 
@@ -390,22 +381,11 @@ window.kickPlayer=async(tid,tname)=>{
 window.hostStartGame=async()=>{
   const snap=await get(dbRef);const st=snap.val();
   const players=st.players||{};
-  const shadowIds=Object.keys(players).filter(id=>players[id].role!=='warden');
-  if(shadowIds.length<st.maxShadows){setErr('lobby-err','Lobby is not full yet.');return;}
-  // randomly place shadowlings in shadow tiles
-  const{map,cols,rows}=st.mapData;
-  const shadow=computeShadow(map,cols,rows,1,1);
-  const starts=randomShadowTiles(map,cols,rows,shadow,shadowIds.length);
+  const shadows=Object.keys(players).filter(id=>players[id].role!=='warden');
+  if(shadows.length<st.maxShadows){setErr('lobby-err','Lobby is not full yet.');return;}
   const sp={},sf={},sd={};
-  shadowIds.forEach((id,i)=>{
-    const pos=starts[i]||{x:cols-2,y:i+1};
-    sp[id]={x:pos.x,y:pos.y};sf[id]=false;sd[id]=false;
-  });
-  await update(dbRef,{
-    status:'playing',phase:'shadow_move',
-    shadowPositions:sp,shadowFrozen:sf,shadowDone:sd,
-    lastActionAt:Date.now()
-  });
+  shadows.forEach(id=>{sp[id]=null;sf[id]=false;sd[id]=false;});
+  await update(dbRef,{status:'playing',phase:'setup',shadowPositions:sp,shadowFrozen:sf,shadowDone:sd,lastActionAt:Date.now()});
 };
 
 // ── ENTER GAME ───────────────────────────────────────────
@@ -414,6 +394,7 @@ function enterGame(state){
   showScreen('game-screen');
   buildHUD(state);
   setupCanvas(state.mapData);
+  // hide dice UI for shadowlings — they never roll
   if(myRole!=='warden'){
     const df=$('dice-face');if(df)df.style.display='none';
     const dl=$('dice-lbl');if(dl)dl.style.display='none';
@@ -451,14 +432,13 @@ function onPhase(st){
   disableDpad();disableDice();$('end-btn').disabled=true;stopShadowTimer();
   const ph=st.phase;
 
-  if(ph==='shadow_move'){
-    shadowEnd=Date.now()+SHADOW_MS;
-    startShadowTimer();
-    setBanner('Shadowlings move — 60 seconds!','#9090e0');
-    if(myRole!=='warden'){
-      if(st.shadowFrozen?.[myId]) setStatus('Frozen! Another shadowling must reach you.');
-      else{setStatus('Tap a connected shadow tile to move.');$('end-btn').disabled=false;}
-    } else setStatus('Shadowlings are moving…');
+  if(ph==='setup'){
+    setBanner('Shadowlings: choose your starting shadow tile','#9090e0');
+    if(myRole==='warden') setStatus('Waiting for shadowlings to place…');
+    else{
+      const pos=st.shadowPositions?.[myId];
+      setStatus(pos&&pos.x!=null?'Placed! Waiting for others…':'Tap a dark tile to start there.');
+    }
   }
 
   if(ph==='warden_roll'){
@@ -472,6 +452,15 @@ function onPhase(st){
     setBanner('Warden moves — shadows shift!','#ffe082');
     if(myRole==='warden'){enableDpad();$('end-btn').disabled=false;setStatus('Move up to '+st.movesLeft+' steps.');}
     else setStatus('Warden is moving — shadows are changing…');
+  }
+
+  if(ph==='shadow_move'){
+    shadowEnd=Date.now()+SHADOW_MS;startShadowTimer();
+    setBanner('Shadowlings move — 60 seconds!','#9090e0');
+    if(myRole!=='warden'){
+      if(st.shadowFrozen?.[myId]) setStatus('Frozen! Another shadowling must reach you.');
+      else{setStatus('Tap a connected shadow tile to move.');$('end-btn').disabled=false;}
+    } else setStatus('Shadowlings are moving…');
   }
 
   if(ph==='ended'){disableDpad();disableDice();}
@@ -493,6 +482,7 @@ function updateHUD(st){
     el.className='hud-pill'+(frozen?' frozen':active?' active':'');
   });
   if(st.phase==='warden_move'&&myRole==='warden'){setStatus('Move: '+st.movesLeft+' step'+(st.movesLeft!==1?'s':'')+' left');enableDpad();$('end-btn').disabled=false;}
+  if(st.phase==='setup'&&myRole==='warden') checkAllPlaced(st);
 }
 
 // ── SHADOW TIMER ─────────────────────────────────────────
@@ -531,6 +521,7 @@ window.tryWardenMove=async(dx,dy)=>{
   const{x,y}=localState.wardenPos,{map,cols,rows}=localState.mapData;
   const nx=x+dx,ny=y+dy;
   if(nx<0||nx>=cols||ny<0||ny>=rows||map[ny][nx]===TREE){setStatus('Blocked.');return;}
+  // update frozen state after warden moves
   const newShadow=computeShadow(map,cols,rows,nx,ny);
   const frozen={...localState.shadowFrozen};
   Object.entries(localState.shadowPositions||{}).forEach(([id,pos])=>{
@@ -542,6 +533,28 @@ window.tryWardenMove=async(dx,dy)=>{
   if(newMoves<=0)upd.phase='shadow_move';
   await update(dbRef,upd);
 };
+
+// ── SHADOWLING PLACEMENT ─────────────────────────────────
+async function placeShadowling(tx,ty){
+  if(!localState||localState.phase!=='setup'||myRole==='warden')return;
+  const pos=localState.shadowPositions?.[myId];
+  if(pos&&pos.x!=null){setStatus('Already placed.');return;}
+  const{map,cols,rows}=localState.mapData,{x:wx,y:wy}=localState.wardenPos;
+  if(map[ty][tx]===TREE){setStatus('Cannot place on a tree.');return;}
+  const shadow=computeShadow(map,cols,rows,wx,wy);
+  if(!shadow.has(ty*cols+tx)){setStatus('Choose a shadow tile (darker area).');return;}
+  const placeUpd={['shadowPositions/'+myId]:{x:tx,y:ty},lastActionAt:Date.now()};
+  await update(dbRef,placeUpd);
+  setStatus('Placed! Waiting for others…');
+}
+
+function checkAllPlaced(st){
+  if(st.phase!=='setup'||myRole!=='warden')return;
+  const players=st.players||{};
+  const sids=Object.keys(players).filter(id=>players[id].role!=='warden');
+  if(sids.every(id=>{const p=st.shadowPositions?.[id];return p&&p.x!=null;}))
+    update(dbRef,{phase:'warden_roll',lastActionAt:Date.now()});
+}
 
 // ── SHADOWLING MOVE ──────────────────────────────────────
 async function moveShadowling(tx,ty){
@@ -556,12 +569,13 @@ async function moveShadowling(tx,ty){
   if(!shadow.has(ty*cols+tx)){setStatus('That tile is lit — stay in shadow.');return;}
   const reach=connectedShadow(shadow,cols,pos.x,pos.y);
   if(!reach.has(ty*cols+tx)){setStatus('No shadow path connects you there.');return;}
-  const upd={[`shadowPositions/${myId}`]:{x:tx,y:ty},lastActionAt:Date.now()};
+  const upd={['shadowPositions/'+myId]:{x:tx,y:ty},lastActionAt:Date.now()};
+  // unfreeze any frozen shadowling already on that tile
   const snap=await get(dbRef);const st=snap.val();
-  Object.entries(st.shadowFrozen||{}).forEach(([fid,isFrozen])=>{
-    if(!isFrozen||fid===myId)return;
+  Object.entries(st.shadowFrozen||{}).forEach(([fid,frozen])=>{
+    if(!frozen||fid===myId)return;
     const fp=st.shadowPositions?.[fid];
-    if(fp&&fp.x===tx&&fp.y===ty)upd[`shadowFrozen/${fid}`]=false;
+    if(fp&&fp.x===tx&&fp.y===ty)upd['shadowFrozen/'+fid]=false;
   });
   await update(dbRef,upd);
   setStatus('Moved. End your turn.');$('end-btn').disabled=false;
@@ -574,7 +588,7 @@ window.sendEndTurn=async()=>{
     await update(dbRef,{phase:'shadow_move',lastActionAt:Date.now()});
     $('end-btn').disabled=true;
   } else if(localState.phase==='shadow_move'&&myRole!=='warden'){
-    await update(dbRef,{[`shadowDone/${myId}`]:true,lastActionAt:Date.now()});
+    await update(dbRef,{['shadowDone/'+myId]:true,lastActionAt:Date.now()});
     $('end-btn').disabled=true;setStatus('Waiting for others…');
     const snap=await get(dbRef);const st=snap.val();
     const players=st.players||{};
@@ -601,15 +615,13 @@ function evalWin(st){
     const{map,cols,rows}=st.mapData,shadow=computeShadow(map,cols,rows,st.wardenPos.x,st.wardenPos.y);
     const poss=active.map(id=>st.shadowPositions?.[id]).filter(p=>p&&p.x!=null);
     if(poss.length===active.length){
-      const allSameTile=poss.every(p=>p.x===poss[0].x&&p.y===poss[0].y);
-      if(allSameTile){
-        const region=connectedShadow(shadow,cols,poss[0].x,poss[0].y);
-        if(region.has(poss[0].y*cols+poss[0].x)){update(dbRef,{phase:'ended',status:'ended',winner:'shadows'});return true;}
-      }
+      const region=connectedShadow(shadow,cols,poss[0].x,poss[0].y);
+      if(poss.every(p=>region.has(p.y*cols+p.x))){update(dbRef,{phase:'ended',status:'ended',winner:'shadows'});return true;}
     }
   }
   return false;
 }
+
 function checkWin(st){
   if(st.phase!=='ended')return;
   stopShadowTimer();
@@ -626,7 +638,8 @@ function setupCanvas(md){
     const r=cv.getBoundingClientRect();
     const tx=Math.floor((e.clientX-r.left)*(cv.width/r.width)/TW);
     const ty=Math.floor((e.clientY-r.top)*(cv.height/r.height)/TH);
-    if(localState.phase==='shadow_move'&&myRole!=='warden') moveShadowling(tx,ty);
+    if(localState.phase==='setup'&&myRole!=='warden') placeShadowling(tx,ty);
+    else if(localState.phase==='shadow_move'&&myRole!=='warden') moveShadowling(tx,ty);
   });
 }
 
@@ -645,11 +658,15 @@ function renderGame(){
   ctx.clearRect(0,0,W,H);ctx.fillStyle='#040a05';ctx.fillRect(0,0,W,H);
   const{x:wx,y:wy}=st.wardenPos;
   const shadow=computeShadow(map,cols,rows,wx,wy);
+
+  // tiles
   for(let ty=0;ty<rows;ty++)for(let tx=0;tx<cols;tx++){
     const px=tx*TW,py=ty*TH,t=map[ty][tx];
-    if(t===TREE)drawTree(ctx,px,py,tx,ty);
+    if(t===TREE) drawTree(ctx,px,py,tx,ty);
     else drawGround(ctx,px,py,shadow.has(ty*cols+tx),tx,ty);
   }
+
+  // shadow/light tint
   ctx.save();
   for(let ty=0;ty<rows;ty++)for(let tx=0;tx<cols;tx++){
     if(map[ty][tx]===TREE)continue;
@@ -657,6 +674,8 @@ function renderGame(){
     ctx.fillRect(tx*TW,ty*TH,TW,TH);
   }
   ctx.restore();
+
+  // light rays
   const lcx=wx*TW+TW/2,lcy=wy*TH+TH/2;
   ctx.save();ctx.globalAlpha=.07;ctx.strokeStyle='#ffe082';ctx.lineWidth=1;
   for(let i=0;i<40;i++){
@@ -672,39 +691,62 @@ function renderGame(){
     ctx.beginPath();ctx.moveTo(lcx,lcy);ctx.lineTo(ex,ey);ctx.stroke();
   }
   ctx.restore();
+
+  // warden glow
   const pulse=1+Math.sin(animF*.06)*.07;
   const grd=ctx.createRadialGradient(lcx,lcy,2,lcx,lcy,TW*3*pulse);
   grd.addColorStop(0,'rgba(255,245,140,.32)');grd.addColorStop(.45,'rgba(255,200,60,.12)');grd.addColorStop(1,'rgba(255,160,20,0)');
   ctx.fillStyle=grd;ctx.beginPath();ctx.arc(lcx,lcy,TW*3*pulse,0,Math.PI*2);ctx.fill();
+
+  // shadowlings
   const players=st.players||{};
   Object.entries(st.shadowPositions||{}).forEach(([id,pos])=>{
     if(!pos||pos.x==null)return;
     const p=players[id];if(!p)return;
     const frozen=st.shadowFrozen?.[id],isMe=id===myId;
     const inLight=!shadow.has(pos.y*cols+pos.x);
-    if(myRole==='warden'&&!inLight&&!frozen)return;
-    if(myRole!=='warden'&&!isMe&&!frozen)return;
+
+    // visibility rules:
+    // - warden: only sees shadowlings in lit (non-shadow) tiles, or frozen ones (always visible to all)
+    // - shadowlings: only see themselves (isMe), and frozen ones (always visible)
+    if(myRole==='warden' && !inLight && !frozen) return;
+    if(myRole!=='warden' && !isMe && !frozen) return;
+
     const cx2=pos.x*TW+TW/2,cy2=pos.y*TH+TH/2;
+    // frozen shadowlings don't bob — they're stuck
     const bob=frozen?0:Math.sin(animF*.05+pos.x*1.1)*2;
     const sw=frozen?0:Math.sin(animF*.04+pos.x*.9)*1.5;
+
     ctx.globalAlpha=1;
+
     if(frozen){
-      const fp=0.6+Math.sin(animF*.08)*0.4;
-      ctx.strokeStyle='rgba(160,210,255,'+fp+')';ctx.lineWidth=2;
+      // pulsing icy ring to indicate frozen
+      const fpulse=0.6+Math.sin(animF*.08)*0.4;
+      ctx.strokeStyle=`rgba(160,210,255,${fpulse})`;
+      ctx.lineWidth=2;
       ctx.beginPath();ctx.arc(cx2,cy2,16,0,Math.PI*2);ctx.stroke();
-      ctx.fillStyle='#6a7a6a';ctx.beginPath();ctx.ellipse(cx2,cy2,9,11,0,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle='#3a4a3a';ctx.beginPath();ctx.ellipse(cx2,cy2-5,5,6,0,0,Math.PI*2);ctx.fill();
+      // grey body
+      ctx.fillStyle='#6a7a6a';
+      ctx.beginPath();ctx.ellipse(cx2,cy2,9,11,0,0,Math.PI*2);ctx.fill();
+      // grey head
+      ctx.fillStyle='#3a4a3a';
+      ctx.beginPath();ctx.ellipse(cx2,cy2-5,5,6,0,0,Math.PI*2);ctx.fill();
+      // dim eyes
       ctx.fillStyle='rgba(180,200,180,.5)';
       ctx.beginPath();ctx.arc(cx2-2,cy2-6,1.5,0,Math.PI*2);ctx.fill();
       ctx.beginPath();ctx.arc(cx2+2,cy2-6,1.5,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle='rgba(160,210,255,.85)';ctx.font='9px system-ui';ctx.textAlign='center';ctx.textBaseline='bottom';
+      // name tag so warden knows who's frozen
+      ctx.fillStyle='rgba(160,210,255,.85)';
+      ctx.font='9px system-ui';ctx.textAlign='center';ctx.textBaseline='bottom';
       ctx.fillText(p.name,cx2,cy2-18);
     } else {
+      // normal shadowling
       ctx.fillStyle=p.color;ctx.beginPath();ctx.ellipse(cx2+sw,cy2+bob,9,11,0,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='rgba(0,0,0,.5)';ctx.beginPath();ctx.ellipse(cx2+sw,cy2+bob-5,5,6,0,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='rgba(255,255,255,.78)';
       ctx.beginPath();ctx.arc(cx2+sw-2,cy2+bob-6,1.5,0,Math.PI*2);ctx.fill();
       ctx.beginPath();ctx.arc(cx2+sw+2,cy2+bob-6,1.5,0,Math.PI*2);ctx.fill();
+      // dashed ring on my shadowling during my turn
       if(isMe&&st.phase==='shadow_move'){
         ctx.strokeStyle=p.color;ctx.lineWidth=1;ctx.setLineDash([2,3]);
         ctx.beginPath();ctx.arc(cx2+sw,cy2+bob,15,0,Math.PI*2);ctx.stroke();
@@ -712,16 +754,21 @@ function renderGame(){
       }
     }
   });
+
+  // warden dot
   ctx.fillStyle='rgba(255,240,130,'+(.95*pulse)+')';ctx.beginPath();ctx.arc(lcx,lcy,10*pulse,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle='rgba(255,210,60,.88)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(lcx,lcy,14*pulse,0,Math.PI*2);ctx.stroke();
   if(myRole==='warden'&&st.phase==='warden_move'){ctx.strokeStyle='rgba(255,230,80,.35)';ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(lcx,lcy,20,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
+
+  // grid
   ctx.strokeStyle='rgba(18,40,20,.55)';ctx.lineWidth=.5;
   for(let y=0;y<=rows;y++){ctx.beginPath();ctx.moveTo(0,y*TH);ctx.lineTo(W,y*TH);ctx.stroke();}
   for(let x=0;x<=cols;x++){ctx.beginPath();ctx.moveTo(x*TW,0);ctx.lineTo(x*TW,H);ctx.stroke();}
 }
 
 function drawGround(ctx,px,py,inShadow,tx,ty){
-  ctx.fillStyle=inShadow?'#0e1a10':'#233d25';ctx.fillRect(px+1,py+1,TW-2,TH-2);
+  ctx.fillStyle=inShadow?'#0e1a10':'#233d25';
+  ctx.fillRect(px+1,py+1,TW-2,TH-2);
   const tip=inShadow?'#182e1a':'#2e5430';
   for(let i=0;i<5;i++){
     const bx=px+5+i*9+(tx*7+ty*3+i*5)%6,by=py+TH-7-(tx*3+i*7)%10;
@@ -730,6 +777,7 @@ function drawGround(ctx,px,py,inShadow,tx,ty){
     ctx.beginPath();ctx.moveTo(bx,by+7);ctx.quadraticCurveTo(bx+sw,by+3,bx+sw*1.4,by);ctx.stroke();
   }
 }
+
 function drawTree(ctx,px,py,tx,ty){
   const cx=px+TW/2,cy=py+TH/2-3,sw=Math.sin(windOff*.03+tx*.7+ty*.9)*1.6;
   ctx.fillStyle='#050c06';ctx.fillRect(cx-3,cy+9,6,12);
@@ -772,7 +820,7 @@ window.leaveGame=async()=>{
         else{
           await remove(ref(db,'games/'+gameCode+'/players/'+myId));
           if(myRole==='warden')await update(ref(db,'games/'+gameCode),{phase:'ended',status:'ended',winner:'timeout'});
-          else if(st.phase==='shadow_move')await update(ref(db,'games/'+gameCode),{[`shadowDone/${myId}`]:true});
+          else if(st.phase==='shadow_move')await update(ref(db,'games/'+gameCode),{['shadowDone/'+myId]:true});
         }
       }
     }catch(e){console.error(e);}

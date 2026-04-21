@@ -91,10 +91,10 @@ function renderLobby(st) {
 
   const list = document.getElementById('lobby-list');
   list.innerHTML = '';
-  if (!players[myId]) return;
 
+  // render all players — "you" is highlighted, no early-return guard
   Object.entries(players).forEach(([id, p]) => {
-    const isMe   = id === myId;
+    const isMe    = id === myId;
     const canKick = isHost && !isMe && p.role !== 'warden';
     const d = document.createElement('div');
     d.className = 'player-row' + (isMe ? ' me' : '');

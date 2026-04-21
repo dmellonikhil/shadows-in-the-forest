@@ -149,7 +149,8 @@
 <script type="module">
 import { loadSession } from './js/firebase.js';
 import { computeShadow, connectedShadow, TILE } from './js/mapgen.js';
-import { renderFrame, renderMinimap } from './js/raycaster.js';
+import { renderFrame } from './js/raycaster.js';
+import { renderMinimap } from './js/minimap.js';
 import {
   initGameState, leaveGame, stopShadowTimer,
   wardenMove, wardenTurn, wardenEndTurn,
@@ -157,10 +158,6 @@ import {
   rollDice, getLocalState, getMyRole, getMyId,
 } from './js/gamestate.js';
 import { initControls, destroyControls, TURN_SPEED, MOVE_SPEED } from './js/controls.js';
-
-// ── expose mapgen helpers to raycaster via window (cross-module bridge) ──
-import * as mapgenMod from './js/mapgen.js';
-window._sitf_mapgen = mapgenMod;
 
 // ── session ──────────────────────────────────────────────
 const sess = loadSession();

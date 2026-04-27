@@ -313,7 +313,7 @@ window.createGame=async()=>{
   gameCode=code;myId='p_'+Date.now();myRole='warden';
   const gs={code,status:'lobby',maxShadows:maxP,mapData:{map,cols,rows},
     players:{[myId]:{name,role:'warden',color:'#ffe082'}},
-    wardenPos:{x:1,y:1},shadowPositions:{},shadowFrozen:{},shadowDone:{},
+    wardenPos:{x:1,y:1,dir:0},shadowPositions:{},shadowFrozen:{},shadowDone:{},
     phase:'lobby',round:1,lastActionAt:Date.now(),movesLeft:0,winner:null};
   await set(ref(db,'games/'+code),gs);
   dbRef=ref(db,'games/'+code);
@@ -349,9 +349,11 @@ function startLobbyListener(code){
   onValue(ref(db,'games/'+code),snap=>{
     if(!snap.exists()){showScreen('home-screen');return;}
     const st=snap.val();
-    if(st.kicked?.[myId]){off(ref(db,'games/'+code));showScreen('home-screen');showModal('Removed','The host removed you from this game.');return;}
+    const players=st.players||{};
+    const confirmed=!!(players[myId]);
+    if(confirmed&&st.kicked?.[myId]){off(ref(db,'games/'+code));showScreen('home-screen');showModal('Removed','The host removed you from this game.');return;}
     renderLobby(st);
-    if(st.phase!=='lobby'){off(ref(db,'games/'+code));enterGame(st);}
+    if(confirmed&&st.phase!=='lobby'){off(ref(db,'games/'+code));enterGame(st);}
   });
 }
 
@@ -398,7 +400,7 @@ window.hostStartGame=async()=>{
   const sp={},sf={},sd={};
   shadows.forEach((id,i)=>{
     const pos=candidates[i]||{x:cols-2,y:i+1};
-    sp[id]={x:pos.x,y:pos.y,angle:Math.PI};sf[id]=false;sd[id]=false;
+    sp[id]={x:pos.x,y:pos.y,dir:2};sf[id]=false;sd[id]=false;
   });
   await update(dbRef,{status:'playing',phase:'shadow_move',shadowPositions:sp,shadowFrozen:sf,shadowDone:sd,lastActionAt:Date.now()});
 };
@@ -528,26 +530,6 @@ window.rollDice=async()=>{
   },55);
 };
 
-// ── WARDEN MOVE ──────────────────────────────────────────
-window.tryWardenMove=async(dx,dy)=>{
-  if(!localState||localState.phase!=='warden_move'||myRole!=='warden')return;
-  if(localState.movesLeft<=0){setStatus('No moves left.');return;}
-  const{x,y}=localState.wardenPos,{map,cols,rows}=localState.mapData;
-  const nx=x+dx,ny=y+dy;
-  if(nx<0||nx>=cols||ny<0||ny>=rows||map[ny][nx]===TREE){setStatus('Blocked.');return;}
-  // update frozen state after warden moves
-  const newShadow=computeShadow(map,cols,rows,nx,ny);
-  const frozen={...localState.shadowFrozen};
-  Object.entries(localState.shadowPositions||{}).forEach(([id,pos])=>{
-    if(!pos||pos.x==null)return;
-    if(!newShadow.has(pos.y*cols+pos.x))frozen[id]=true;
-  });
-  const newMoves=localState.movesLeft-1;
-  const upd={wardenPos:{x:nx,y:ny},movesLeft:newMoves,shadowFrozen:frozen,lastActionAt:Date.now()};
-  if(newMoves<=0)upd.phase='shadow_move';
-  await update(dbRef,upd);
-};
-
 // ── SHADOWLING PLACEMENT ─────────────────────────────────
 async function placeShadowling(tx,ty){
   if(!localState||localState.phase!=='setup'||myRole==='warden')return;
@@ -644,47 +626,52 @@ function checkWin(st){
   else if(st.winner==='timeout') showModal('Game closed','No activity for 20 minutes.','OK',()=>leaveGame());
 }
 
-// ── CANVAS & RAYCASTER CONSTANTS ─────────────────────────
+// ── RAYCASTER CONSTANTS ───────────────────────────────────
+// dir: 0=east(+x), 1=south(+y), 2=west(-x), 3=north(-y)
+const DIR_DX=[1,0,-1,0],DIR_DY=[0,1,0,-1];
+const DIR_ANGLE=[0,Math.PI/2,Math.PI,Math.PI*3/2]; // radians for rendering
 const FOV=Math.PI*75/180, HALF_FOV=FOV/2;
-const MAX_DIST=20, TURN=Math.PI/10, RC_W=320, RC_H=200;
+const MAX_DIST=20, RC_W=320, RC_H=200;
 const WALL_NEAR=[18,50,20], WALL_FAR=[4,12,5];
-const MM_T=5; // minimap px per tile
+const MM_T=5;
+
+function dirToAngle(dir){return DIR_ANGLE[((dir%4)+4)%4];}
 
 function setupCanvas(md){
-  const cv=$('gc');
-  cv.width=RC_W;cv.height=RC_H;
-  // resize mm based on map
-  const mm=$('mm');
-  mm.width=md.cols*MM_T;mm.height=md.rows*MM_T;
-  // set viewport height proportional
+  const cv=$('gc');cv.width=RC_W;cv.height=RC_H;
+  const mm=$('mm');mm.width=md.cols*MM_T;mm.height=md.rows*MM_T;
   const wrap=$('canvas-wrap');
   wrap.style.height=Math.min(window.innerHeight*0.45,280)+'px';
 }
 
 // ── CONTROLS ─────────────────────────────────────────────
-window.doTurn=async(dir)=>{
+window.doTurn=async(delta)=>{
+  // delta: -1=turn left (CCW), +1=turn right (CW)
   if(!localState)return;
-  const isWardenTurn=localState.phase==='warden_move'||localState.phase==='warden_roll';
-  const isShadowTurn=localState.phase==='shadow_move';
-  if(myRole==='warden'&&!isWardenTurn)return;
-  if(myRole!=='warden'&&!isShadowTurn)return;
+  const ph=localState.phase;
   if(myRole==='warden'){
+    if(ph!=='warden_move'&&ph!=='warden_roll')return;
     const pos=localState.wardenPos;
-    await update(dbRef,{wardenPos:{...pos,angle:((pos.angle??0)+dir*TURN)},lastActionAt:Date.now()});
+    const newDir=(((pos.dir??0)+delta)%4+4)%4;
+    await update(dbRef,{wardenPos:{...pos,dir:newDir},lastActionAt:Date.now()});
   } else {
+    if(ph!=='shadow_move')return;
+    if(localState.shadowFrozen?.[myId])return;
     const pos=localState.shadowPositions?.[myId];if(!pos)return;
-    await update(dbRef,{[`shadowPositions/${myId}`]:{...pos,angle:((pos.angle??0)+dir*TURN)},lastActionAt:Date.now()});
+    const newDir=(((pos.dir??2)+delta)%4+4)%4;
+    await update(dbRef,{['shadowPositions/'+myId]:{...pos,dir:newDir},lastActionAt:Date.now()});
   }
 };
 
-window.doFwd=async(dir)=>{
+window.doFwd=async(delta)=>{
+  // delta: +1=forward, -1=backward
   if(!localState)return;
   if(myRole==='warden'){
     if(localState.phase!=='warden_move')return;
     if(localState.movesLeft<=0){setStatus('No moves left.');return;}
-    const{x,y,angle}=localState.wardenPos,{map,cols,rows}=localState.mapData;
-    const nx=x+Math.round(Math.cos(angle??0)*dir);
-    const ny=y+Math.round(Math.sin(angle??0)*dir);
+    const{x,y,dir}=localState.wardenPos,{map,cols,rows}=localState.mapData;
+    const d=(((dir??0)+(delta<0?2:0))%4+4)%4; // reverse dir if moving back
+    const nx=x+DIR_DX[d],ny=y+DIR_DY[d];
     if(nx<0||nx>=cols||ny<0||ny>=rows||map[ny][nx]===TREE){setStatus('Blocked.');return;}
     const newShadow=computeShadow(map,cols,rows,nx,ny);
     const frozen={...localState.shadowFrozen};
@@ -693,7 +680,7 @@ window.doFwd=async(dir)=>{
       if(!newShadow.has(pos.y*cols+pos.x))frozen[id]=true;
     });
     const newMoves=localState.movesLeft-1;
-    const upd={wardenPos:{x:nx,y:ny,angle},movesLeft:newMoves,shadowFrozen:frozen,lastActionAt:Date.now()};
+    const upd={wardenPos:{x:nx,y:ny,dir:dir??0},movesLeft:newMoves,shadowFrozen:frozen,lastActionAt:Date.now()};
     if(newMoves<=0)upd.phase='shadow_move';
     await update(dbRef,upd);
   } else {
@@ -702,43 +689,23 @@ window.doFwd=async(dir)=>{
     if(localState.shadowDone?.[myId]){setStatus('Already moved.');return;}
     const pos=localState.shadowPositions?.[myId];if(!pos||pos.x==null)return;
     const{map,cols,rows}=localState.mapData,{x:wx,y:wy}=localState.wardenPos;
-    const angle=pos.angle??Math.PI;
-    const nx=pos.x+Math.round(Math.cos(angle)*dir);
-    const ny=pos.y+Math.round(Math.sin(angle)*dir);
+    const d=(((pos.dir??2)+(delta<0?2:0))%4+4)%4;
+    const nx=pos.x+DIR_DX[d],ny=pos.y+DIR_DY[d];
     if(nx<0||nx>=cols||ny<0||ny>=rows||map[ny][nx]===TREE){setStatus('Blocked.');return;}
     const shadow=computeShadow(map,cols,rows,wx,wy);
     if(!shadow.has(ny*cols+nx)){setStatus('That tile is lit — stay in shadow.');return;}
     const reach=connectedShadow(shadow,cols,pos.x,pos.y);
     if(!reach.has(ny*cols+nx)){setStatus('No shadow path there.');return;}
-    const upd={[`shadowPositions/${myId}`]:{x:nx,y:ny,angle},lastActionAt:Date.now()};
+    const upd={['shadowPositions/'+myId]:{x:nx,y:ny,dir:pos.dir??2},lastActionAt:Date.now()};
     const snap=await get(dbRef);const st=snap.val();
     Object.entries(st.shadowFrozen||{}).forEach(([fid,frz])=>{
       if(!frz||fid===myId)return;
       const fp=st.shadowPositions?.[fid];
-      if(fp&&fp.x===nx&&fp.y===ny)upd[`shadowFrozen/${fid}`]=false;
+      if(fp&&fp.x===nx&&fp.y===ny)upd['shadowFrozen/'+fid]=false;
     });
     await update(dbRef,upd);
     setStatus('Moved. End your turn.');$('end-btn').disabled=false;
   }
-};
-
-// also keep old warden grid move for backward compat (unused now)
-window.tryWardenMove=async(dx,dy)=>{
-  if(!localState||localState.phase!=='warden_move'||myRole!=='warden')return;
-  if(localState.movesLeft<=0){setStatus('No moves left.');return;}
-  const{x,y,angle}=localState.wardenPos,{map,cols,rows}=localState.mapData;
-  const nx=x+dx,ny=y+dy;
-  if(nx<0||nx>=cols||ny<0||ny>=rows||map[ny][nx]===TREE){setStatus('Blocked.');return;}
-  const newShadow=computeShadow(map,cols,rows,nx,ny);
-  const frozen={...localState.shadowFrozen};
-  Object.entries(localState.shadowPositions||{}).forEach(([id,pos])=>{
-    if(!pos||pos.x==null)return;
-    if(!newShadow.has(pos.y*cols+pos.x))frozen[id]=true;
-  });
-  const newMoves=localState.movesLeft-1;
-  const upd={wardenPos:{x:nx,y:ny,angle:angle??0},movesLeft:newMoves,shadowFrozen:frozen,lastActionAt:Date.now()};
-  if(newMoves<=0)upd.phase='shadow_move';
-  await update(dbRef,upd);
 };
 
 // ── RENDER LOOP ───────────────────────────────────────────
@@ -777,25 +744,24 @@ function renderFrame(){
   const W=RC_W,H=RC_H;
   const{map,cols,rows}=st.mapData;
 
-  // camera pos
+  // camera position and angle from cardinal dir
   let camX,camY,camAngle;
   if(myRole==='warden'){
-    camX=st.wardenPos.x+0.5;camY=st.wardenPos.y+0.5;camAngle=st.wardenPos.angle??0;
+    camX=st.wardenPos.x+0.5;camY=st.wardenPos.y+0.5;
+    camAngle=dirToAngle(st.wardenPos.dir??0);
   } else {
     const pos=st.shadowPositions?.[myId];
     if(!pos||pos.x==null){ctx.fillStyle='#040a05';ctx.fillRect(0,0,W,H);return;}
-    camX=pos.x+0.5;camY=pos.y+0.5;camAngle=pos.angle??Math.PI;
+    camX=pos.x+0.5;camY=pos.y+0.5;
+    camAngle=dirToAngle(pos.dir??2);
   }
 
   // ceiling + floor
   ctx.fillStyle='#030806';ctx.fillRect(0,0,W,H/2);
   ctx.fillStyle='#0a1209';ctx.fillRect(0,H/2,W,H);
 
-  // shadow set for visibility
   const{x:wx,y:wy}=st.wardenPos;
   const shadowSet=computeShadow(map,cols,rows,wx,wy);
-
-  // z-buffer
   const zBuf=new Float32Array(W);
 
   // walls
@@ -812,7 +778,6 @@ function renderFrame(){
     const b=Math.round((WALL_NEAR[2]+(WALL_FAR[2]-WALL_NEAR[2])*t)*shade);
     ctx.fillStyle='rgb('+r+','+g+','+b+')';
     ctx.fillRect(col,top,1,wallH);
-    // warm tint near walls for warden
     if(myRole==='warden'&&dist<3.5){
       const a=(1-dist/3.5)*0.2;
       ctx.fillStyle='rgba(255,200,80,'+a.toFixed(2)+')';
@@ -820,7 +785,7 @@ function renderFrame(){
     }
   }
 
-  // warden distant glow (seen by shadowlings)
+  // warden glow seen by shadowlings
   if(myRole!=='warden'){
     const wdx=wx+0.5-camX,wdy=wy+0.5-camY;
     const wdist=Math.sqrt(wdx*wdx+wdy*wdy);
@@ -852,11 +817,10 @@ function renderFrame(){
     if(myRole==='warden'&&!inLight&&!frozen)return;
     if(myRole!=='warden'&&!isMe&&!frozen)return;
     const dx=pos.x+0.5-camX,dy=pos.y+0.5-camY;
-    sprites.push({id,pos,p,frozen,isMe,dx,dy,dist:Math.sqrt(dx*dx+dy*dy)});
+    sprites.push({pos,p,frozen,isMe,dx,dy,dist:Math.sqrt(dx*dx+dy*dy)});
   });
   sprites.sort((a,b)=>b.dist-a.dist);
-  sprites.forEach(({pos,p,frozen,isMe,dx,dy,dist})=>{
-    // transform to camera space
+  sprites.forEach(({pos,p,frozen,isMe,dx,dy})=>{
     const invDet=1/(Math.cos(camAngle)*Math.sin(camAngle+Math.PI/2)-Math.sin(camAngle)*Math.cos(camAngle+Math.PI/2));
     const tx_=invDet*(Math.sin(camAngle+Math.PI/2)*dx-Math.cos(camAngle+Math.PI/2)*dy);
     const tz_=invDet*(-Math.sin(camAngle)*dx+Math.cos(camAngle)*dy);
@@ -867,8 +831,7 @@ function renderFrame(){
     const sy1=Math.min(H-1,Math.floor((H+sprH)/2));
     const sx0=Math.floor(screenX-sprH/2),sx1=Math.floor(screenX+sprH/2);
     for(let sx=sx0;sx<sx1;sx++){
-      if(sx<0||sx>=W)continue;
-      if(tz_>=zBuf[sx])continue;
+      if(sx<0||sx>=W||tz_>=zBuf[sx])continue;
       const tx=Math.floor((sx-sx0)/(sx1-sx0)*16);
       const isBody=tx>=2&&tx<=13,isHead=tx>=5&&tx<=10;
       for(let sy=sy0;sy<sy1;sy++){
@@ -876,7 +839,7 @@ function renderFrame(){
         if(frozen){
           if(rel>0.12&&rel<0.85&&isBody){ctx.fillStyle='#607060';ctx.fillRect(sx,sy,1,1);}
           else if(rel>0.04&&rel<0.22&&isHead){ctx.fillStyle='#3a4a3a';ctx.fillRect(sx,sy,1,1);}
-          else if(rel<0.05&&isBody){ctx.fillStyle='rgba(140,200,255,0.7)';ctx.fillRect(sx,sy,1,1);}
+          else if(rel<0.06&&isBody){ctx.fillStyle='rgba(140,200,255,0.7)';ctx.fillRect(sx,sy,1,1);}
           else if(rel>0.1&&rel<0.18&&(tx===6||tx===9)){ctx.fillStyle='rgba(180,200,180,.5)';ctx.fillRect(sx,sy,1,1);}
         } else {
           if(rel>0.12&&rel<0.85&&isBody){ctx.fillStyle=p.color;ctx.fillRect(sx,sy,1,1);}
@@ -906,7 +869,6 @@ function renderFrame(){
   vgrd.addColorStop(1,myRole==='warden'?'rgba(0,0,0,.52)':'rgba(0,8,2,.68)');
   ctx.fillStyle=vgrd;ctx.fillRect(0,0,W,H);
 
-  // minimap
   renderMinimap(st,shadowSet);
 }
 
@@ -936,14 +898,15 @@ function renderMinimap(st,shadowSet){
     ctx.fillRect(px,py,T,T);
   }
 
-  // player dot + facing
-  let dotX,dotY,angle,color;
+  // player dot + facing arrow
+  let dotX,dotY,dir,color;
   if(myRole==='warden'){
-    dotX=st.wardenPos.x;dotY=st.wardenPos.y;angle=st.wardenPos.angle??0;color='#ffe082';
+    dotX=st.wardenPos.x;dotY=st.wardenPos.y;dir=st.wardenPos.dir??0;color='#ffe082';
   } else {
     const pos=st.shadowPositions?.[myId];if(!pos||pos.x==null)return;
-    dotX=pos.x;dotY=pos.y;angle=pos.angle??Math.PI;color=st.players?.[myId]?.color||'#a0c0a0';
+    dotX=pos.x;dotY=pos.y;dir=pos.dir??2;color=st.players?.[myId]?.color||'#a0c0a0';
   }
+  const angle=dirToAngle(dir);
   const cx=dotX*T+T/2,cy=dotY*T+T/2;
   ctx.fillStyle=color;ctx.beginPath();ctx.arc(cx,cy,T*.45,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle='#fff';ctx.lineWidth=1.2;
